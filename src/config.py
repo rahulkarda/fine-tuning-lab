@@ -10,8 +10,8 @@ class TrainConfig:
     output_dir: str = "outputs/run"
     epochs: int = 1
     learning_rate: float = 1e-4  # lowered default
-    batch_size: int = 4
-    grad_accum_steps: int = 4
+    batch_size: int = 8  # increased batch size
+    grad_accum_steps: int = 8  # increased grad accum steps
     max_seq_length: int = 1024
     seed: int = 42
     use_lora: bool = True
