@@ -1,6 +1,12 @@
 import os
 from src.utils import count_jsonl_lines
 
+"""
+Basic unit test for data utilities.
+Currently tests count_jsonl_lines on a small synthetic jsonl file.
+Extend with more tests as utilities are added.
+"""
+
 def test_count_jsonl_lines():
     # Create a temporary jsonl file with known lines
     test_path = 'test_tmp.jsonl'
