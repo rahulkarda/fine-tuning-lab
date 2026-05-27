@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, List
 
 def count_jsonl_lines(path: str) -> int:
     """
@@ -30,3 +30,16 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]
             if not schema_fn(obj):
                 invalid_count += 1
     return invalid_count
+
+
+def load_jsonl(path: str) -> List[Dict[str, Any]]:
+    """
+    Load a jsonl file into a list of dicts.
+    Each line must be valid JSON.
+    """
+    items = []
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            obj = json.loads(line)
+            items.append(obj)
+    return items
