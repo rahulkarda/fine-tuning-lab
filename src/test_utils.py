@@ -22,7 +22,12 @@ def test_count_jsonl_lines():
         assert result == 3, f"Expected 3 lines, got {result}"
         print("test_count_jsonl_lines passed.")
     finally:
-        os.remove(test_path)
+        try:
+            os.remove(test_path)
+        except FileNotFoundError:
+            pass
+        except PermissionError:
+            pass
 
 if __name__ == '__main__':
     test_count_jsonl_lines()
