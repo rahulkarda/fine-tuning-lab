@@ -15,11 +15,13 @@ def count_jsonl_lines(path: str) -> int:
     """
     Count the number of lines (examples) in a jsonl file.
     Useful for quick dataset stats.
+    Ignores empty or blank lines.
     """
     count = 0
     with open(path, 'r', encoding='utf-8') as f:
-        for _ in f:
-            count += 1
+        for line in f:
+            if line.strip():
+                count += 1
     return count
 
 
@@ -28,10 +30,13 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]
     Validate each line in a jsonl file against a schema_fn.
     Returns the number of invalid examples.
     schema_fn: function taking a dict, returns True if valid.
+    Ignores empty or blank lines.
     """
     invalid_count = 0
     with open(path, 'r', encoding='utf-8') as f:
         for i, line in enumerate(f, 1):
+            if not line.strip():
+                continue
             try:
                 obj = json.loads(line)
             except Exception:
@@ -46,10 +51,13 @@ def load_jsonl(path: str) -> List[Dict[str, Any]]:
     """
     Load a jsonl file into a list of dicts.
     Each line must be valid JSON.
+    Ignores empty or blank lines.
     """
     items = []
     with open(path, 'r', encoding='utf-8') as f:
         for line in f:
+            if not line.strip():
+                continue
             obj = json.loads(line)
             items.append(obj)
     return items
