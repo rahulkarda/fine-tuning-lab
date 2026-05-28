@@ -3,7 +3,7 @@
 ## Phase 1: dataset tooling
 - [ ] JSONL loader with schema validation
 - [ ] Prompt formatter (chat templates per model family)
-- [ ] Dataset stats helper (token length distribution, label balance)
+- [x] Dataset stats helper (token length distribution, label balance)
 - [ ] Train/val split with seed control
 
 ## Phase 2: training loop

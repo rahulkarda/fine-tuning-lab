@@ -5,11 +5,13 @@ Includes:
 - count_jsonl_lines: quick count of dataset examples
 - validate_jsonl_schema: schema validation for JSONL datasets
 - load_jsonl: load JSONL as list of dicts
+- get_token_length_distribution: token length stats for dataset
 
 Useful for dataset stats, validation, and loading.
 """
 import json
-from typing import Dict, Any, Callable, List
+from typing import Dict, Any, Callable, List, Optional
+
 
 def count_jsonl_lines(path: str) -> int:
     """
@@ -23,6 +25,7 @@ def count_jsonl_lines(path: str) -> int:
             if line.strip():
                 count += 1
     return count
+
 
 
 def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]) -> int:
@@ -47,6 +50,7 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]
     return invalid_count
 
 
+
 def load_jsonl(path: str) -> List[Dict[str, Any]]:
     """
     Load a jsonl file into a list of dicts.
@@ -61,3 +65,48 @@ def load_jsonl(path: str) -> List[Dict[str, Any]]:
             obj = json.loads(line)
             items.append(obj)
     return items
+
+
+def get_token_length_distribution(
+    data: List[Dict[str, Any]],
+    text_key: str = "text",
+    tokenizer = None,
+    max_items: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Compute token length distribution for dataset.
+    Args:
+      data: list of dicts (from load_jsonl)
+      text_key: key in dict to tokenize
+      tokenizer: HuggingFace tokenizer (must be provided)
+      max_items: if set, only process this many items
+    Returns:
+      dict with stats: min, max, mean, median, lengths
+    """
+    if tokenizer is None:
+        raise ValueError("Tokenizer must be provided")
+    lengths = []
+    for i, item in enumerate(data):
+        if text_key not in item:
+            continue
+        text = item[text_key]
+        tokens = tokenizer.encode(text, add_special_tokens=True)
+        lengths.append(len(tokens))
+        if max_items is not None and i + 1 >= max_items:
+            break
+    if not lengths:
+        return {"min": 0, "max": 0, "mean": 0, "median": 0, "lengths": []}
+    lengths_sorted = sorted(lengths)
+    n = len(lengths_sorted)
+    mean = sum(lengths_sorted) / n
+    if n % 2 == 0:
+        median = (lengths_sorted[n // 2 - 1] + lengths_sorted[n // 2]) / 2
+    else:
+        median = lengths_sorted[n // 2]
+    return {
+        "min": min(lengths_sorted),
+        "max": max(lengths_sorted),
+        "mean": mean,
+        "median": median,
+        "lengths": lengths_sorted
+    }
