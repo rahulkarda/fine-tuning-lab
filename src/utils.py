@@ -1,3 +1,13 @@
+"""
+Dataset/file utilities for fine-tuning-lab.
+
+Includes:
+- count_jsonl_lines: quick count of dataset examples
+- validate_jsonl_schema: schema validation for JSONL datasets
+- load_jsonl: load JSONL as list of dicts
+
+Useful for dataset stats, validation, and loading.
+"""
 import json
 from typing import Dict, Any, Callable, List
 
