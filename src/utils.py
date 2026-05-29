@@ -91,6 +91,12 @@ def get_token_length_distribution(
             continue
         text = item[text_key]
         tokens = tokenizer.encode(text, add_special_tokens=True)
+        # Some tokenizers (e.g. SentencePiece) return a dict or np.ndarray, not always a list
+        if hasattr(tokens, 'tolist'):
+            tokens = tokens.tolist()
+        elif isinstance(tokens, dict):
+            # unusual, but just skip
+            continue
         lengths.append(len(tokens))
         if max_items is not None and i + 1 >= max_items:
             break
