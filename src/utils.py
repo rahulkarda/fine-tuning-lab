@@ -93,6 +93,8 @@ def get_token_length_distribution(
         text = item[text_key]
         tokens = tokenizer.encode(text, add_special_tokens=True)
         # Handle possible return types from tokenizer.encode
+        if tokens is None:
+            continue
         if hasattr(tokens, 'tolist'):
             tokens_list = tokens.tolist()
         elif isinstance(tokens, dict):
