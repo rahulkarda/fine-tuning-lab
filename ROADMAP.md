@@ -1,7 +1,7 @@
 # Roadmap
 
 ## Phase 1: dataset tooling
-- [ ] JSONL loader with schema validation
+- [x] JSONL loader with schema validation
 - [ ] Prompt formatter (chat templates per model family)
 - [x] Dataset stats helper (token length distribution, label balance)
 - [ ] Train/val split with seed control
@@ -26,5 +26,5 @@
 
 ## Phase 5: polish
 - [ ] CLI entrypoint
-- [ ] Unit tests for data utilities
+- [x] Unit tests for data utilities
 - [ ] Notebook walkthrough

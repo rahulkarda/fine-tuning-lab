@@ -1,5 +1,5 @@
 import os
-from src.utils import count_jsonl_lines, load_jsonl
+from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema
 
 """
 Basic unit test for data utilities.
@@ -53,6 +53,35 @@ def test_load_jsonl():
         except PermissionError:
             pass
 
+def test_validate_jsonl_schema():
+    # Create a temporary jsonl file with valid and invalid lines
+    test_path = 'test_tmp_schema.jsonl'
+    lines = [
+        '{"id": 1, "text": "a"}\n',  # valid
+        '{"id": 2}\n',                 # invalid (missing text)
+        'not_a_json\n',                  # invalid (not JSON)
+        '{"id": 3, "text": "c"}\n', # valid
+        '\n',                           # blank
+        '{"text": "d"}\n'             # invalid (missing id)
+    ]
+    with open(test_path, 'w', encoding='utf-8') as f:
+        f.writelines(lines)
+    # Schema: must have both 'id' and 'text' keys
+    def schema_fn(obj):
+        return isinstance(obj, dict) and 'id' in obj and 'text' in obj
+    try:
+        invalid = validate_jsonl_schema(test_path, schema_fn)
+        assert invalid == 3, f"Expected 3 invalid lines, got {invalid}"
+        print("test_validate_jsonl_schema passed.")
+    finally:
+        try:
+            os.remove(test_path)
+        except FileNotFoundError:
+            pass
+        except PermissionError:
+            pass
+
 if __name__ == '__main__':
     test_count_jsonl_lines()
     test_load_jsonl()
+    test_validate_jsonl_schema()
