@@ -27,7 +27,6 @@ def count_jsonl_lines(path: str) -> int:
     return count
 
 
-
 def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]) -> int:
     """
     Validate each line in a jsonl file against a schema_fn.
@@ -48,7 +47,6 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]
             if not schema_fn(obj):
                 invalid_count += 1
     return invalid_count
-
 
 
 def load_jsonl(path: str) -> List[Dict[str, Any]]:
@@ -85,34 +83,38 @@ def get_token_length_distribution(
     """
     if tokenizer is None:
         raise ValueError("Tokenizer must be provided")
-    lengths = []
-    for i, item in enumerate(data):
+    token_lengths = []
+    processed_count = 0
+    for item in data:
+        if max_items is not None and processed_count >= max_items:
+            break
         if text_key not in item:
             continue
         text = item[text_key]
         tokens = tokenizer.encode(text, add_special_tokens=True)
-        # Some tokenizers (e.g. SentencePiece) return a dict or np.ndarray, not always a list
+        # Handle possible return types from tokenizer.encode
         if hasattr(tokens, 'tolist'):
-            tokens = tokens.tolist()
+            tokens_list = tokens.tolist()
         elif isinstance(tokens, dict):
-            # unusual, but just skip
+            # If encode returns dict, skip this item
             continue
-        lengths.append(len(tokens))
-        if max_items is not None and i + 1 >= max_items:
-            break
-    if not lengths:
+        else:
+            tokens_list = tokens
+        token_lengths.append(len(tokens_list))
+        processed_count += 1
+    if not token_lengths:
         return {"min": 0, "max": 0, "mean": 0, "median": 0, "lengths": []}
-    lengths_sorted = sorted(lengths)
-    n = len(lengths_sorted)
-    mean = sum(lengths_sorted) / n
+    sorted_lengths = sorted(token_lengths)
+    n = len(sorted_lengths)
+    mean = sum(sorted_lengths) / n
     if n % 2 == 0:
-        median = (lengths_sorted[n // 2 - 1] + lengths_sorted[n // 2]) / 2
+        median = (sorted_lengths[n // 2 - 1] + sorted_lengths[n // 2]) / 2
     else:
-        median = lengths_sorted[n // 2]
+        median = sorted_lengths[n // 2]
     return {
-        "min": min(lengths_sorted),
-        "max": max(lengths_sorted),
+        "min": min(sorted_lengths),
+        "max": max(sorted_lengths),
         "mean": mean,
         "median": median,
-        "lengths": lengths_sorted
+        "lengths": sorted_lengths
     }
