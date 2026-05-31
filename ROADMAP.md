@@ -2,7 +2,7 @@
 
 ## Phase 1: dataset tooling
 - [x] JSONL loader with schema validation
-- [ ] Prompt formatter (chat templates per model family)
+- [x] Prompt formatter (chat templates per model family)
 - [x] Dataset stats helper (token length distribution, label balance)
 - [ ] Train/val split with seed control
 
