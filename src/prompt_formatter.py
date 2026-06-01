@@ -1,9 +1,29 @@
-from typing import List, Dict, Any
-
 """
 Prompt formatting utility for chat-style datasets.
-Supports simple templates per model family (Phi, Qwen, Llama-3).
+
+Supports:
+- Simple chat templates for major model families: Phi, Qwen, Llama-3
+- Format examples (dicts with 'system', 'user', 'assistant') into training-ready prompt strings
+
+Templates:
+  - Phi: <|system|> <|user|> <|assistant|> tokens
+  - Qwen: <|im_start|>role ... <|im_end|> blocks
+  - Llama-3: <|system|> <|user|> <|assistant|> blocks (newline separated)
+
+Usage:
+    prompt = format_prompt(example, model_family="phi")
+    prompt = format_prompt(example, model_family="qwen")
+    prompt = format_prompt(example, model_family="llama3")
+
+Args:
+    example: dict with keys ('system', 'user', 'assistant')
+    model_family: str, one of 'phi', 'qwen', 'llama3'
+    add_system: whether to include system message if present
+
+Returns:
+    Prompt string formatted for model family
 """
+from typing import List, Dict, Any
 
 CHAT_TEMPLATES = {
     "phi": {
@@ -48,4 +68,3 @@ def format_prompt(
     if 'assistant' in example:
         parts.append(template['assistant'].format(assistant=example['assistant']))
     return ''.join(parts)
-
