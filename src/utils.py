@@ -6,11 +6,13 @@ Includes:
 - validate_jsonl_schema: schema validation for JSONL datasets
 - load_jsonl: load JSONL as list of dicts
 - get_token_length_distribution: token length stats for dataset
+- train_val_split: random split of dataset with seed control
 
 Useful for dataset stats, validation, and loading.
 """
 import json
-from typing import Dict, Any, Callable, List, Optional
+from typing import Dict, Any, Callable, List, Optional, Tuple
+import random
 
 
 def count_jsonl_lines(path: str) -> int:
@@ -120,3 +122,33 @@ def get_token_length_distribution(
         "median": median,
         "lengths": sorted_lengths
     }
+
+
+def train_val_split(
+    data: List[Any],
+    val_ratio: float = 0.1,
+    seed: Optional[int] = None
+) -> Tuple[List[Any], List[Any]]:
+    """
+    Randomly split dataset into train and val sets with seed control.
+    Args:
+      data: list of items
+      val_ratio: fraction of items to assign to val set (between 0 and 1)
+      seed: random seed for reproducibility
+    Returns:
+      train, val: (list, list)
+    """
+    if not 0 < val_ratio < 1:
+        raise ValueError("val_ratio must be in (0, 1)")
+    indices = list(range(len(data)))
+    rnd = random.Random(seed) if seed is not None else random
+    rnd.shuffle(indices)
+    val_size = int(len(data) * val_ratio)
+    val_indices = set(indices[:val_size])
+    train, val = [], []
+    for i, item in enumerate(data):
+        if i in val_indices:
+            val.append(item)
+        else:
+            train.append(item)
+    return train, val

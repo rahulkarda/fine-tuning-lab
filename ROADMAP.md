@@ -4,7 +4,7 @@
 - [x] JSONL loader with schema validation
 - [x] Prompt formatter (chat templates per model family)
 - [x] Dataset stats helper (token length distribution, label balance)
-- [ ] Train/val split with seed control
+- [x] Train/val split with seed control
 
 ## Phase 2: training loop
 - [ ] Minimal HF Trainer wrapper with LoRA
