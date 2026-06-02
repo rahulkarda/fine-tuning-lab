@@ -105,7 +105,7 @@ def get_token_length_distribution(
         else:
             tokens_list = tokens
         token_lengths.append(len(tokens_list))
-        processed_count += 1
+        processed_count += 1  # Only increment for valid, non-skipped items
     if not token_lengths:
         return {"min": 0, "max": 0, "mean": 0, "median": 0, "lengths": []}
     sorted_lengths = sorted(token_lengths)
