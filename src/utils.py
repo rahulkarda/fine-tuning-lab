@@ -146,9 +146,9 @@ def train_val_split(
     val_size = int(len(data) * val_ratio)
     val_indices = set(indices[:val_size])
     train, val = [], []
-    for i, item in enumerate(data):
-        # Bugfix: assignment should use shuffled indices
-        if i in val_indices:
+    for idx, item in enumerate(data):
+        # Assignment should use shuffled indices
+        if idx in val_indices:
             val.append(item)
         else:
             train.append(item)
