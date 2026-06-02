@@ -1,5 +1,5 @@
 import os
-from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema
+from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema, train_val_split
 
 """
 Basic unit test for data utilities.
@@ -81,7 +81,21 @@ def test_validate_jsonl_schema():
         except PermissionError:
             pass
 
+def test_train_val_split():
+    # Minimal test for train_val_split utility
+    data = list(range(10))
+    val_ratio = 0.2
+    seed = 123
+    train, val = train_val_split(data, val_ratio=val_ratio, seed=seed)
+    assert len(val) == 2, f"Expected 2 val items, got {len(val)}"
+    assert len(train) == 8, f"Expected 8 train items, got {len(train)}"
+    # Check reproducibility
+    train2, val2 = train_val_split(data, val_ratio=val_ratio, seed=seed)
+    assert val == val2 and train == train2, "Split not reproducible with same seed"
+    print("test_train_val_split passed.")
+
 if __name__ == '__main__':
     test_count_jsonl_lines()
     test_load_jsonl()
     test_validate_jsonl_schema()
+    test_train_val_split()
