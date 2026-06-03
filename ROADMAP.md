@@ -7,7 +7,7 @@
 - [x] Train/val split with seed control
 
 ## Phase 2: training loop
-- [ ] Minimal HF Trainer wrapper with LoRA
+- [x] Minimal HF Trainer wrapper with LoRA
 - [ ] Config-driven runs (one YAML per experiment)
 - [ ] Resume-from-checkpoint
 - [ ] Memory-efficient gradient checkpointing toggle
