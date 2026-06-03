@@ -15,8 +15,8 @@ class TrainConfig:
     max_seq_length: int = 1024
     seed: int = 42
     use_lora: bool = True
-    lora_r: int = 32  # increased rank
-    lora_alpha: int = 64  # increased alpha
+    lora_r: int = 8  # lowered rank for memory efficiency
+    lora_alpha: int = 16  # lowered alpha for memory efficiency
     lora_dropout: float = 0.1  # increased dropout
     lora_target_modules: tuple = ("q_proj", "v_proj")
     warmup_ratio: float = 0.03
