@@ -5,9 +5,9 @@ Includes:
 - count_jsonl_lines: quick count of dataset examples
 - validate_jsonl_schema: schema validation for JSONL datasets
 - load_jsonl: load JSONL as list of dicts
+- save_jsonl: save list of dicts to JSONL file
 - get_token_length_distribution: token length stats for dataset
 - train_val_split: random split of dataset with seed control
-- save_jsonl: save list of dicts to JSONL file
 
 Useful for dataset stats, validation, and loading.
 """
@@ -15,12 +15,10 @@ import json
 from typing import Dict, Any, Callable, List, Optional, Tuple
 import random
 
-
 def count_jsonl_lines(path: str) -> int:
     """
     Count the number of lines (examples) in a jsonl file.
-    Useful for quick dataset stats.
-    Ignores empty or blank lines.
+    Returns the number of non-empty lines.
     """
     count = 0
     with open(path, 'r', encoding='utf-8') as f:
@@ -29,17 +27,15 @@ def count_jsonl_lines(path: str) -> int:
                 count += 1
     return count
 
-
 def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]) -> int:
     """
-    Validate each line in a jsonl file against a schema_fn.
+    Validate each line in a jsonl file against a schema function.
     Returns the number of invalid examples.
-    schema_fn: function taking a dict, returns True if valid.
     Ignores empty or blank lines.
     """
     invalid_count = 0
     with open(path, 'r', encoding='utf-8') as f:
-        for i, line in enumerate(f, 1):
+        for line in f:
             if not line.strip():
                 continue
             try:
@@ -50,7 +46,6 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]
             if not schema_fn(obj):
                 invalid_count += 1
     return invalid_count
-
 
 def load_jsonl(path: str) -> List[Dict[str, Any]]:
     """
@@ -67,19 +62,14 @@ def load_jsonl(path: str) -> List[Dict[str, Any]]:
             items.append(obj)
     return items
 
-
 def save_jsonl(data: List[Dict[str, Any]], path: str) -> None:
     """
     Save a list of dicts to a jsonl file.
-    Args:
-      data: list of dicts
-      path: output file path
     Each dict is written as a line of JSON.
     """
     with open(path, 'w', encoding='utf-8') as f:
         for item in data:
             f.write(json.dumps(item, ensure_ascii=False) + '\n')
-
 
 def get_token_length_distribution(
     data: List[Dict[str, Any]],
@@ -88,47 +78,46 @@ def get_token_length_distribution(
     max_items: Optional[int] = None
 ) -> Dict[str, Any]:
     """
-    Compute token length distribution for dataset.
+    Compute token length distribution for a dataset.
     Args:
       data: list of dicts (from load_jsonl)
       text_key: key in dict to tokenize
-      tokenizer: HuggingFace tokenizer (must be provided)
-      max_items: if set, only process this many items
+      tokenizer: HuggingFace tokenizer (required)
+      max_items: if set, only process up to this many items
     Returns:
       dict with stats: min, max, mean, median, lengths
     """
     if tokenizer is None:
         raise ValueError("Tokenizer must be provided")
     token_lengths = []
-    processed_count = 0
+    processed = 0
     for item in data:
-        if max_items is not None and processed_count >= max_items:
+        if max_items is not None and processed >= max_items:
             break
         if text_key not in item:
             continue
         text = item[text_key]
         tokens = tokenizer.encode(text, add_special_tokens=True)
-        # Handle possible return types from tokenizer.encode
         if tokens is None:
             continue
+        # Accept either list or tensor, but skip dicts
         if hasattr(tokens, 'tolist'):
             tokens_list = tokens.tolist()
         elif isinstance(tokens, dict):
-            # If encode returns dict, skip this item
             continue
         else:
             tokens_list = tokens
         token_lengths.append(len(tokens_list))
-        processed_count += 1  # Only increment for valid, non-skipped items
+        processed += 1
     if not token_lengths:
         return {"min": 0, "max": 0, "mean": 0, "median": 0, "lengths": []}
     sorted_lengths = sorted(token_lengths)
     n = len(sorted_lengths)
     mean = sum(sorted_lengths) / n
-    if n % 2 == 0:
-        median = (sorted_lengths[n // 2 - 1] + sorted_lengths[n // 2]) / 2
-    else:
-        median = sorted_lengths[n // 2]
+    median = (
+        (sorted_lengths[n // 2 - 1] + sorted_lengths[n // 2]) / 2
+        if n % 2 == 0 else sorted_lengths[n // 2]
+    )
     return {
         "min": min(sorted_lengths),
         "max": max(sorted_lengths),
@@ -137,17 +126,16 @@ def get_token_length_distribution(
         "lengths": sorted_lengths
     }
 
-
 def train_val_split(
     data: List[Any],
     val_ratio: float = 0.1,
     seed: Optional[int] = None
 ) -> Tuple[List[Any], List[Any]]:
     """
-    Randomly split dataset into train and val sets with seed control.
+    Randomly split dataset into train and validation sets with seed control.
     Args:
       data: list of items
-      val_ratio: fraction of items to assign to val set (between 0 and 1)
+      val_ratio: fraction of items to assign to val set (0 < val_ratio < 1)
       seed: random seed for reproducibility
     Returns:
       train, val: (list, list)
@@ -161,7 +149,6 @@ def train_val_split(
     val_indices = set(indices[:val_size])
     train, val = [], []
     for idx, item in enumerate(data):
-        # Assignment should use shuffled indices
         if idx in val_indices:
             val.append(item)
         else:
