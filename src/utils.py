@@ -7,6 +7,7 @@ Includes:
 - load_jsonl: load JSONL as list of dicts
 - get_token_length_distribution: token length stats for dataset
 - train_val_split: random split of dataset with seed control
+- save_jsonl: save list of dicts to JSONL file
 
 Useful for dataset stats, validation, and loading.
 """
@@ -65,6 +66,19 @@ def load_jsonl(path: str) -> List[Dict[str, Any]]:
             obj = json.loads(line)
             items.append(obj)
     return items
+
+
+def save_jsonl(data: List[Dict[str, Any]], path: str) -> None:
+    """
+    Save a list of dicts to a jsonl file.
+    Args:
+      data: list of dicts
+      path: output file path
+    Each dict is written as a line of JSON.
+    """
+    with open(path, 'w', encoding='utf-8') as f:
+        for item in data:
+            f.write(json.dumps(item, ensure_ascii=False) + '\n')
 
 
 def get_token_length_distribution(
