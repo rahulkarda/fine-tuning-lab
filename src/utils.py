@@ -8,6 +8,7 @@ Includes:
 - save_jsonl: save list of dicts to JSONL file
 - get_token_length_distribution: token length stats for dataset
 - train_val_split: random split of dataset with seed control
+- get_model_family_from_name: extract model family string from base model name
 
 Useful for dataset stats, validation, and loading.
 """
@@ -154,3 +155,20 @@ def train_val_split(
         else:
             train.append(item)
     return train, val
+
+def get_model_family_from_name(model_name: str) -> str:
+    """
+    Extracts model family string ('phi', 'qwen', 'llama3') from base model name.
+    Args:
+        model_name: e.g. 'microsoft/Phi-3-mini-4k-instruct', 'Qwen/Qwen1.5-0.5B', 'meta-llama/Meta-Llama-3-8B'
+    Returns:
+        model_family: str ('phi', 'qwen', 'llama3') if recognized, else 'unknown'
+    """
+    lower_name = model_name.lower()
+    if 'phi' in lower_name:
+        return 'phi'
+    if 'qwen' in lower_name:
+        return 'qwen'
+    if 'llama-3' in lower_name or 'llama3' in lower_name or 'meta-llama-3' in lower_name:
+        return 'llama3'
+    return 'unknown'
