@@ -148,12 +148,8 @@ def train_val_split(
     rnd.shuffle(indices)
     val_size = int(len(data) * val_ratio)
     val_indices = set(indices[:val_size])
-    train, val = [], []
-    for idx, item in enumerate(data):
-        if idx in val_indices:
-            val.append(item)
-        else:
-            train.append(item)
+    val = [data[i] for i in indices[:val_size]]
+    train = [data[i] for i in indices[val_size:]]
     return train, val
 
 def get_model_family_from_name(model_name: str) -> str:
