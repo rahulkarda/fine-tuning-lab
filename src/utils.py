@@ -10,6 +10,7 @@ Includes:
 - train_val_split: random split of dataset with seed control
 - get_model_family_from_name: extract model family string from base model name
 - deduplicate_jsonl: remove duplicate lines from a JSONL file
+- filter_jsonl_by_schema: filter a JSONL file by a schema function and save only valid lines
 
 Useful for dataset stats, validation, and loading.
 """
@@ -156,29 +157,35 @@ def train_val_split(
 
 def get_model_family_from_name(model_name: str) -> str:
     """
-    Extracts model family string ('phi', 'qwen', 'llama3') from base model name.
-    Args:
-        model_name: e.g. 'microsoft/Phi-3-mini-4k-instruct', 'Qwen/Qwen1.5-0.5B', 'meta-llama/Meta-Llama-3-8B'
-    Returns:
-        model_family: str ('phi', 'qwen', 'llama3') if recognized, else 'unknown'
+    Extract model family from base model name.
+    Returns 'phi', 'qwen', 'llama3', or 'other'.
     """
-    lower_name = model_name.lower()
-    if 'phi' in lower_name:
+    name = model_name.lower()
+    if 'phi' in name:
         return 'phi'
-    if 'qwen' in lower_name:
+    if 'qwen' in name:
         return 'qwen'
-    if 'llama-3' in lower_name or 'llama3' in lower_name or 'meta-llama-3' in lower_name:
+    if 'llama-3' in name or 'llama3' in name:
         return 'llama3'
-    return 'unknown'
+    return 'other'
+
+def save_jsonl(data: List[Dict[str, Any]], path: str) -> None:
+    """
+    Save a list of dicts to a jsonl file.
+    Each dict is written as a line of JSON.
+    """
+    with open(path, 'w', encoding='utf-8') as f:
+        for item in data:
+            f.write(json.dumps(item, ensure_ascii=False) + '\n')
 
 def deduplicate_jsonl(input_path: str, output_path: Optional[str] = None) -> int:
     """
-    Removes duplicate lines in a JSONL file (duplicate dicts, not just text).
+    Remove duplicate lines from a JSONL file.
     Args:
         input_path: path to input JSONL file
-        output_path: if given, writes deduplicated lines to this file; else overwrites input_path
+        output_path: path to output file (overwrites input if None)
     Returns:
-        Number of unique lines written.
+        Number of unique lines written
     """
     seen = set()
     unique_lines = []
@@ -188,7 +195,6 @@ def deduplicate_jsonl(input_path: str, output_path: Optional[str] = None) -> int
                 continue
             try:
                 obj = json.loads(line)
-                # Serialize dict with sorted keys for stable deduplication
                 key = json.dumps(obj, sort_keys=True, ensure_ascii=False)
             except Exception:
                 # If not valid JSON, treat line as raw text
@@ -200,3 +206,33 @@ def deduplicate_jsonl(input_path: str, output_path: Optional[str] = None) -> int
     with open(out_path, 'w', encoding='utf-8') as f:
         f.writelines(unique_lines)
     return len(unique_lines)
+
+
+def filter_jsonl_by_schema(
+    input_path: str,
+    schema_fn: Callable[[Dict[str, Any]], bool],
+    output_path: str
+) -> int:
+    """
+    Filter a JSONL file by a schema function and save only valid lines.
+    Args:
+        input_path: path to input JSONL file
+        schema_fn: function taking a dict and returning True if valid
+        output_path: path to output JSONL file
+    Returns:
+        Number of valid lines written
+    """
+    valid_lines = []
+    with open(input_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if schema_fn(obj):
+                valid_lines.append(json.dumps(obj, ensure_ascii=False) + '\n')
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.writelines(valid_lines)
+    return len(valid_lines)
