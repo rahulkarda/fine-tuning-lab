@@ -9,12 +9,14 @@ Includes:
 - get_token_length_distribution: token length stats for dataset
 - train_val_split: random split of dataset with seed control
 - get_model_family_from_name: extract model family string from base model name
+- deduplicate_jsonl: remove duplicate lines from a JSONL file
 
 Useful for dataset stats, validation, and loading.
 """
 import json
 from typing import Dict, Any, Callable, List, Optional, Tuple
 import random
+import os
 
 def count_jsonl_lines(path: str) -> int:
     """
@@ -168,3 +170,33 @@ def get_model_family_from_name(model_name: str) -> str:
     if 'llama-3' in lower_name or 'llama3' in lower_name or 'meta-llama-3' in lower_name:
         return 'llama3'
     return 'unknown'
+
+def deduplicate_jsonl(input_path: str, output_path: Optional[str] = None) -> int:
+    """
+    Removes duplicate lines in a JSONL file (duplicate dicts, not just text).
+    Args:
+        input_path: path to input JSONL file
+        output_path: if given, writes deduplicated lines to this file; else overwrites input_path
+    Returns:
+        Number of unique lines written.
+    """
+    seen = set()
+    unique_lines = []
+    with open(input_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+                # Serialize dict with sorted keys for stable deduplication
+                key = json.dumps(obj, sort_keys=True, ensure_ascii=False)
+            except Exception:
+                # If not valid JSON, treat line as raw text
+                key = line.strip()
+            if key not in seen:
+                seen.add(key)
+                unique_lines.append(line.strip() + '\n')
+    out_path = output_path if output_path is not None else input_path
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.writelines(unique_lines)
+    return len(unique_lines)
