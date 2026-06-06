@@ -68,3 +68,20 @@ def format_prompt(
     if 'assistant' in example:
         parts.append(template['assistant'].format(assistant=example['assistant']))
     return ''.join(parts)
+
+
+def format_prompts_batch(
+    examples: List[Dict[str, Any]],
+    model_family: str = "phi",
+    add_system: bool = True
+) -> List[str]:
+    """
+    Formats a list of chat examples into prompt strings for the given model family.
+    Args:
+        examples: list of dicts with keys ('user', 'assistant', optionally 'system')
+        model_family: one of 'phi', 'qwen', 'llama3'
+        add_system: whether to prepend system message if present
+    Returns:
+        List of prompt strings
+    """
+    return [format_prompt(ex, model_family=model_family, add_system=add_system) for ex in examples]
