@@ -82,4 +82,7 @@ class MinimalTrainer:
         )
 
     def train(self):
-        return self.trainer.train()
+        if self.cfg.resume_from:
+            return self.trainer.train(resume_from_checkpoint=self.cfg.resume_from)
+        else:
+            return self.trainer.train()

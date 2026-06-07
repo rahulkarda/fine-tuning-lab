@@ -9,7 +9,7 @@
 ## Phase 2: training loop
 - [x] Minimal HF Trainer wrapper with LoRA
 - [x] Config-driven runs (one YAML per experiment)
-- [ ] Resume-from-checkpoint
+- [x] Resume-from-checkpoint
 - [ ] Memory-efficient gradient checkpointing toggle
 
 ## Phase 3: eval
