@@ -146,81 +146,56 @@ def train_val_split(
     """
     if not 0 < val_ratio < 1:
         raise ValueError("val_ratio must be in (0, 1)")
-    indices = list(range(len(data)))
+    num_items = len(data)
+    val_size = int(num_items * val_ratio)
+    indices = list(range(num_items))
     rnd = random.Random(seed) if seed is not None else random
     rnd.shuffle(indices)
-    val_size = int(len(data) * val_ratio)
-    val_indices = set(indices[:val_size])
-    val = [data[i] for i in indices[:val_size]]
-    train = [data[i] for i in indices[val_size:]]
+    val_indices = indices[:val_size]
+    train_indices = indices[val_size:]
+    val = [data[i] for i in val_indices]
+    train = [data[i] for i in train_indices]
     return train, val
 
 def get_model_family_from_name(model_name: str) -> str:
     """
-    Extract model family from base model name.
-    Returns 'phi', 'qwen', 'llama3', or 'other'.
+    Extract model family ('phi', 'qwen', 'llama3', etc) from base model name.
+    Returns 'phi', 'qwen', 'llama3', or 'unknown'.
     """
     name = model_name.lower()
     if 'phi' in name:
         return 'phi'
-    if 'qwen' in name:
+    elif 'qwen' in name:
         return 'qwen'
-    if 'llama-3' in name or 'llama3' in name:
+    elif 'llama-3' in name or 'llama3' in name:
         return 'llama3'
-    return 'other'
+    else:
+        return 'unknown'
 
-def save_jsonl(data: List[Dict[str, Any]], path: str) -> None:
+def deduplicate_jsonl(input_path: str, output_path: str) -> int:
     """
-    Save a list of dicts to a jsonl file.
-    Each dict is written as a line of JSON.
-    """
-    with open(path, 'w', encoding='utf-8') as f:
-        for item in data:
-            f.write(json.dumps(item, ensure_ascii=False) + '\n')
-
-def deduplicate_jsonl(input_path: str, output_path: Optional[str] = None) -> int:
-    """
-    Remove duplicate lines from a JSONL file.
-    Args:
-        input_path: path to input JSONL file
-        output_path: path to output file (overwrites input if None)
-    Returns:
-        Number of unique lines written
+    Removes duplicate lines from a JSONL file and writes unique lines to output_path.
+    Returns the number of unique examples written.
     """
     seen = set()
     unique_lines = []
     with open(input_path, 'r', encoding='utf-8') as f:
         for line in f:
-            if not line.strip():
+            norm = line.strip()
+            if not norm:
                 continue
-            try:
-                obj = json.loads(line)
-                key = json.dumps(obj, sort_keys=True, ensure_ascii=False)
-            except Exception:
-                # If not valid JSON, treat line as raw text
-                key = line.strip()
-            if key not in seen:
-                seen.add(key)
-                unique_lines.append(line.strip() + '\n')
-    out_path = output_path if output_path is not None else input_path
-    with open(out_path, 'w', encoding='utf-8') as f:
+            if norm in seen:
+                continue
+            seen.add(norm)
+            unique_lines.append(line)
+    with open(output_path, 'w', encoding='utf-8') as f:
         f.writelines(unique_lines)
     return len(unique_lines)
 
-
-def filter_jsonl_by_schema(
-    input_path: str,
-    schema_fn: Callable[[Dict[str, Any]], bool],
-    output_path: str
-) -> int:
+def filter_jsonl_by_schema(input_path: str, output_path: str, schema_fn: Callable[[Dict[str, Any]], bool]) -> int:
     """
-    Filter a JSONL file by a schema function and save only valid lines.
-    Args:
-        input_path: path to input JSONL file
-        schema_fn: function taking a dict and returning True if valid
-        output_path: path to output JSONL file
-    Returns:
-        Number of valid lines written
+    Filter a JSONL file, saving only lines that pass schema_fn.
+    Returns the number of valid examples written.
     """
     valid_lines = []
     with open(input_path, 'r', encoding='utf-8') as f:
