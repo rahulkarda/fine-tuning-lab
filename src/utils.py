@@ -11,6 +11,7 @@ Includes:
 - get_model_family_from_name: extract model family string from base model name
 - deduplicate_jsonl: remove duplicate lines from a JSONL file
 - filter_jsonl_by_schema: filter a JSONL file by a schema function and save only valid lines
+- shard_jsonl: split a JSONL file into N shards of roughly equal size
 
 Useful for dataset stats, validation, and loading.
 """
@@ -153,49 +154,51 @@ def train_val_split(
     rnd.shuffle(indices)
     val_indices = indices[:val_size]
     train_indices = indices[val_size:]
-    val = [data[i] for i in val_indices]
     train = [data[i] for i in train_indices]
+    val = [data[i] for i in val_indices]
     return train, val
 
 def get_model_family_from_name(model_name: str) -> str:
     """
-    Extract model family ('phi', 'qwen', 'llama3', etc) from base model name.
-    Returns 'phi', 'qwen', 'llama3', or 'unknown'.
+    Extracts model family string from HuggingFace model name.
+    Args:
+        model_name: str (e.g. 'microsoft/Phi-3-mini-4k-instruct')
+    Returns:
+        family string: 'phi', 'qwen', 'llama3', or 'unknown'
     """
     name = model_name.lower()
-    if 'phi' in name:
-        return 'phi'
-    elif 'qwen' in name:
-        return 'qwen'
-    elif 'llama-3' in name or 'llama3' in name:
-        return 'llama3'
-    else:
-        return 'unknown'
+    if "phi" in name:
+        return "phi"
+    if "qwen" in name:
+        return "qwen"
+    if "llama-3" in name or "llama3" in name:
+        return "llama3"
+    return "unknown"
 
 def deduplicate_jsonl(input_path: str, output_path: str) -> int:
     """
-    Removes duplicate lines from a JSONL file and writes unique lines to output_path.
-    Returns the number of unique examples written.
+    Deduplicate lines in a JSONL file (by exact string match).
+    Saves only unique lines to output_path.
+    Returns: number of unique lines written.
     """
     seen = set()
     unique_lines = []
     with open(input_path, 'r', encoding='utf-8') as f:
         for line in f:
-            norm = line.strip()
-            if not norm:
+            line_stripped = line.strip()
+            if not line_stripped:
                 continue
-            if norm in seen:
-                continue
-            seen.add(norm)
-            unique_lines.append(line)
+            if line_stripped not in seen:
+                seen.add(line_stripped)
+                unique_lines.append(line_stripped + '\n')
     with open(output_path, 'w', encoding='utf-8') as f:
         f.writelines(unique_lines)
     return len(unique_lines)
 
 def filter_jsonl_by_schema(input_path: str, output_path: str, schema_fn: Callable[[Dict[str, Any]], bool]) -> int:
     """
-    Filter a JSONL file, saving only lines that pass schema_fn.
-    Returns the number of valid examples written.
+    Filter a JSONL file by schema_fn. Only lines passing schema_fn are written to output_path.
+    Returns: number of valid lines written.
     """
     valid_lines = []
     with open(input_path, 'r', encoding='utf-8') as f:
@@ -211,3 +214,32 @@ def filter_jsonl_by_schema(input_path: str, output_path: str, schema_fn: Callabl
     with open(output_path, 'w', encoding='utf-8') as f:
         f.writelines(valid_lines)
     return len(valid_lines)
+
+def shard_jsonl(input_path: str, output_dir: str, num_shards: int) -> List[str]:
+    """
+    Split a JSONL file into num_shards files of roughly equal size.
+    Args:
+        input_path: path to source JSONL file
+        output_dir: directory to write shards
+        num_shards: number of shards to create
+    Returns:
+        List of shard file paths
+    """
+    assert num_shards > 0, "num_shards must be > 0"
+    with open(input_path, 'r', encoding='utf-8') as f:
+        lines = [line for line in f if line.strip()]
+    total = len(lines)
+    # Determine shard sizes
+    base = total // num_shards
+    remainder = total % num_shards
+    shard_sizes = [base + 1 if i < remainder else base for i in range(num_shards)]
+    shard_paths = []
+    idx = 0
+    os.makedirs(output_dir, exist_ok=True)
+    for i, size in enumerate(shard_sizes):
+        shard_path = os.path.join(output_dir, f"shard_{i+1}.jsonl")
+        with open(shard_path, 'w', encoding='utf-8') as f:
+            f.writelines(lines[idx:idx+size])
+        shard_paths.append(shard_path)
+        idx += size
+    return shard_paths
