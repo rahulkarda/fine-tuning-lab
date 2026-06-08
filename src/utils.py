@@ -148,88 +148,94 @@ def train_val_split(
     if not 0 < val_ratio < 1:
         raise ValueError("val_ratio must be in (0, 1)")
     num_items = len(data)
-    val_size = int(num_items * val_ratio)
+    # Ensure at least 1 item in val set if val_ratio > 0 and num_items > 0
+    val_size = max(1, int(num_items * val_ratio)) if num_items > 0 and val_ratio > 0 else 0
+    if val_size > num_items:
+        val_size = num_items
     indices = list(range(num_items))
     rnd = random.Random(seed) if seed is not None else random
     rnd.shuffle(indices)
     val_indices = indices[:val_size]
     train_indices = indices[val_size:]
-    train = [data[i] for i in train_indices]
     val = [data[i] for i in val_indices]
+    train = [data[i] for i in train_indices]
     return train, val
 
 def get_model_family_from_name(model_name: str) -> str:
     """
-    Extracts model family string from HuggingFace model name.
-    Args:
-        model_name: str (e.g. 'microsoft/Phi-3-mini-4k-instruct')
-    Returns:
-        family string: 'phi', 'qwen', 'llama3', or 'unknown'
+    Returns model family string ('phi', 'qwen', 'llama3', etc) from base model name.
     """
-    name = model_name.lower()
-    if "phi" in name:
+    lower_name = model_name.lower()
+    if "phi" in lower_name:
         return "phi"
-    if "qwen" in name:
+    if "qwen" in lower_name:
         return "qwen"
-    if "llama-3" in name or "llama3" in name:
+    if "llama" in lower_name or "llama-3" in lower_name:
         return "llama3"
     return "unknown"
 
 def deduplicate_jsonl(input_path: str, output_path: str) -> int:
     """
-    Deduplicate lines in a JSONL file (by exact string match).
-    Saves only unique lines to output_path.
-    Returns: number of unique lines written.
+    Removes duplicate lines from a JSONL file.
+    Args:
+        input_path: path to input JSONL
+        output_path: path to output JSONL
+    Returns:
+        Number of unique lines written
     """
     seen = set()
-    unique_lines = []
-    with open(input_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line_stripped = line.strip()
-            if not line_stripped:
+    count = 0
+    with open(input_path, 'r', encoding='utf-8') as fin, open(output_path, 'w', encoding='utf-8') as fout:
+        for line in fin:
+            line_strip = line.strip()
+            if not line_strip:
                 continue
-            if line_stripped not in seen:
-                seen.add(line_stripped)
-                unique_lines.append(line_stripped + '\n')
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.writelines(unique_lines)
-    return len(unique_lines)
+            if line_strip not in seen:
+                fout.write(line)
+                seen.add(line_strip)
+                count += 1
+    return count
 
 def filter_jsonl_by_schema(input_path: str, output_path: str, schema_fn: Callable[[Dict[str, Any]], bool]) -> int:
     """
-    Filter a JSONL file by schema_fn. Only lines passing schema_fn are written to output_path.
-    Returns: number of valid lines written.
+    Filters a JSONL file by a schema function. Writes only valid lines.
+    Args:
+        input_path: path to input JSONL
+        output_path: path to output JSONL
+        schema_fn: function taking dict, returns bool
+    Returns:
+        Number of valid lines written
     """
-    valid_lines = []
-    with open(input_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            if not line.strip():
+    written = 0
+    with open(input_path, 'r', encoding='utf-8') as fin, open(output_path, 'w', encoding='utf-8') as fout:
+        for line in fin:
+            line_strip = line.strip()
+            if not line_strip:
                 continue
             try:
-                obj = json.loads(line)
+                obj = json.loads(line_strip)
             except Exception:
                 continue
             if schema_fn(obj):
-                valid_lines.append(json.dumps(obj, ensure_ascii=False) + '\n')
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.writelines(valid_lines)
-    return len(valid_lines)
+                fout.write(line)
+                written += 1
+    return written
 
 def shard_jsonl(input_path: str, output_dir: str, num_shards: int) -> List[str]:
     """
-    Split a JSONL file into num_shards files of roughly equal size.
+    Splits a JSONL file into N shards of roughly equal size.
     Args:
-        input_path: path to source JSONL file
-        output_dir: directory to write shards
-        num_shards: number of shards to create
+        input_path: path to input JSONL
+        output_dir: directory for output shards
+        num_shards: number of shards
     Returns:
         List of shard file paths
     """
-    assert num_shards > 0, "num_shards must be > 0"
     with open(input_path, 'r', encoding='utf-8') as f:
         lines = [line for line in f if line.strip()]
     total = len(lines)
-    # Determine shard sizes
+    if num_shards < 1 or total == 0:
+        return []
     base = total // num_shards
     remainder = total % num_shards
     shard_sizes = [base + 1 if i < remainder else base for i in range(num_shards)]
