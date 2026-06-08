@@ -10,7 +10,7 @@
 - [x] Minimal HF Trainer wrapper with LoRA
 - [x] Config-driven runs (one YAML per experiment)
 - [x] Resume-from-checkpoint
-- [ ] Memory-efficient gradient checkpointing toggle
+- [x] Memory-efficient gradient checkpointing toggle
 
 ## Phase 3: eval
 - [ ] Loss-on-held-out-set

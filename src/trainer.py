@@ -48,6 +48,15 @@ def setup_model_and_tokenizer(cfg: TrainConfig):
             raise ImportError("peft not installed, required for LoRA training")
         lora_config = create_lora_config(cfg)
         model = get_peft_model(model, lora_config)
+    # Gradient checkpointing toggle
+    if getattr(cfg, "gradient_checkpointing", False):
+        if hasattr(model, "gradient_checkpointing_enable"):
+            model.gradient_checkpointing_enable()
+        else:
+            try:
+                model.config.gradient_checkpointing = True
+            except Exception:
+                pass
     return model, tokenizer
 
 def get_training_args(cfg: TrainConfig):
@@ -67,6 +76,7 @@ def get_training_args(cfg: TrainConfig):
         fp16=True,
         report_to=[],
         resume_from_checkpoint=cfg.resume_from,
+        gradient_checkpointing=cfg.gradient_checkpointing,
     )
 
 class MinimalTrainer:

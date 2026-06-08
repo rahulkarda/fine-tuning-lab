@@ -22,3 +22,4 @@ class TrainConfig:
     warmup_ratio: float = 0.03
     weight_decay: float = 0.0
     resume_from: Optional[str] = None
+    gradient_checkpointing: bool = False  # new toggle
