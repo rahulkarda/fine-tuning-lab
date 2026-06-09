@@ -63,10 +63,13 @@ def format_prompt(
     parts = []
     if add_system and 'system' in example and example['system']:
         parts.append(template['system'].format(system=example['system']))
-    if 'user' in example:
-        parts.append(template['user'].format(user=example['user']))
-    if 'assistant' in example:
-        parts.append(template['assistant'].format(assistant=example['assistant']))
+    # Handle missing keys gracefully
+    user_val = example.get('user', None)
+    if user_val is not None:
+        parts.append(template['user'].format(user=user_val))
+    assistant_val = example.get('assistant', None)
+    if assistant_val is not None:
+        parts.append(template['assistant'].format(assistant=assistant_val))
     return ''.join(parts)
 
 
