@@ -2,9 +2,16 @@ import os
 from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema, train_val_split
 
 """
-Basic unit test for data utilities.
-Currently tests count_jsonl_lines on a small synthetic jsonl file.
+Basic unit test coverage for core data utilities in src/utils.py.
+
+Tests:
+- count_jsonl_lines: verifies line counting on synthetic JSONL
+- load_jsonl: verifies loading and blank line handling
+- validate_jsonl_schema: checks schema validation logic (missing keys, non-JSON lines)
+- train_val_split: checks split size, reproducibility with seed
+
 Extend with more tests as utilities are added.
+Run directly for quick check: python src/test_utils.py
 """
 
 def test_count_jsonl_lines():
