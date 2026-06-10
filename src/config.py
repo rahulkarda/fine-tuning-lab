@@ -8,7 +8,7 @@ class TrainConfig:
     base_model: str = "microsoft/Phi-3-mini-4k-instruct"
     dataset_path: str = "data/train.jsonl"
     output_dir: str = "outputs/run"
-    epochs: int = 1
+    epochs: int = 3  # increased default epochs for more robust training
     learning_rate: float = 1e-4  # lowered default
     batch_size: int = 4  # reduced batch size for faster iteration
     grad_accum_steps: int = 4  # reduced grad accum steps for faster iteration
@@ -19,7 +19,7 @@ class TrainConfig:
     lora_alpha: int = 16  # lowered alpha for memory efficiency
     lora_dropout: float = 0.15  # increased dropout for more regularization
     lora_target_modules: tuple = ("q_proj", "v_proj")
-    warmup_ratio: float = 0.03
+    warmup_ratio: float = 0.08  # increased warmup ratio for smoother ramp-up
     weight_decay: float = 0.0
     resume_from: Optional[str] = None
     gradient_checkpointing: bool = False  # new toggle
