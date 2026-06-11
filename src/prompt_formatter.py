@@ -4,6 +4,7 @@ Prompt formatting utility for chat-style datasets.
 Supports:
 - Simple chat templates for major model families: Phi, Qwen, Llama-3
 - Format examples (dicts with 'system', 'user', 'assistant') into training-ready prompt strings
+- Multi-turn dialogue formatting (list of turns)
 
 Templates:
   - Phi: <|system|> <|user|> <|assistant|> tokens
@@ -14,11 +15,13 @@ Usage:
     prompt = format_prompt(example, model_family="phi")
     prompt = format_prompt(example, model_family="qwen")
     prompt = format_prompt(example, model_family="llama3")
+    prompt = format_multi_turn_prompt(dialogue, model_family="phi")
 
 Args:
     example: dict with keys ('system', 'user', 'assistant')
     model_family: str, one of 'phi', 'qwen', 'llama3'
     add_system: whether to include system message if present
+    dialogue: list of dicts with 'role' and 'content' (for multi-turn)
 
 Returns:
     Prompt string formatted for model family
@@ -40,6 +43,24 @@ CHAT_TEMPLATES = {
         "system": "<|system|>\n{system}\n",
         "user": "<|user|>\n{user}\n",
         "assistant": "<|assistant|>\n{assistant}\n"
+    }
+}
+
+ROLE_MAP = {
+    "phi": {
+        "system": "system",
+        "user": "user",
+        "assistant": "assistant"
+    },
+    "qwen": {
+        "system": "system",
+        "user": "user",
+        "assistant": "assistant"
+    },
+    "llama3": {
+        "system": "system",
+        "user": "user",
+        "assistant": "assistant"
     }
 }
 
@@ -88,3 +109,42 @@ def format_prompts_batch(
         List of prompt strings
     """
     return [format_prompt(ex, model_family=model_family, add_system=add_system) for ex in examples]
+
+
+def format_multi_turn_prompt(
+    dialogue: List[Dict[str, Any]],
+    model_family: str = "phi",
+    system_message: str = None
+) -> str:
+    """
+    Formats a multi-turn dialogue (list of turns) for the given model family.
+    Args:
+        dialogue: list of dicts with keys ('role', 'content')
+        model_family: one of 'phi', 'qwen', 'llama3'
+        system_message: optional str, prepended as system message if present
+    Returns:
+        prompt string
+    """
+    if model_family not in CHAT_TEMPLATES:
+        raise ValueError(f"Unknown model_family: {model_family}")
+    template = CHAT_TEMPLATES[model_family]
+    role_map = ROLE_MAP[model_family]
+    parts = []
+    if system_message:
+        parts.append(template['system'].format(system=system_message))
+    for turn in dialogue:
+        role = turn.get('role', None)
+        content = turn.get('content', None)
+        if role is None or content is None:
+            continue
+        # Only format roles that are supported in template
+        if role in role_map.values():
+            parts.append(template[role].format(**{role: content}))
+        else:
+            # Try mapping common role names to template keys
+            if role.lower() in role_map:
+                template_key = role_map[role.lower()]
+                parts.append(template[template_key].format(**{template_key: content}))
+            else:
+                continue
+    return ''.join(parts)
