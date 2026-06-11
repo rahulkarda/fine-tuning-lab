@@ -5,6 +5,7 @@ Supports:
 - Simple chat templates for major model families: Phi, Qwen, Llama-3
 - Format examples (dicts with 'system', 'user', 'assistant') into training-ready prompt strings
 - Multi-turn dialogue formatting (list of turns)
+- Role mapping for template compatibility
 
 Templates:
   - Phi: <|system|> <|user|> <|assistant|> tokens
@@ -22,9 +23,11 @@ Args:
     model_family: str, one of 'phi', 'qwen', 'llama3'
     add_system: whether to include system message if present
     dialogue: list of dicts with 'role' and 'content' (for multi-turn)
+    system_message: optional str for multi-turn prompt (prepended)
 
 Returns:
-    Prompt string formatted for model family
+    Prompt string formatted for model family.
+    For multi-turn: roles are mapped to template keys if possible.
 """
 from typing import List, Dict, Any
 
@@ -124,6 +127,10 @@ def format_multi_turn_prompt(
         system_message: optional str, prepended as system message if present
     Returns:
         prompt string
+    Notes:
+        - Roles are mapped to template keys (system, user, assistant) if possible.
+        - If role is not directly supported, attempts mapping by lowercasing.
+        - Ignores turns with missing role/content.
     """
     if model_family not in CHAT_TEMPLATES:
         raise ValueError(f"Unknown model_family: {model_family}")
