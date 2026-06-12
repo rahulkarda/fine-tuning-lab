@@ -6,6 +6,7 @@ Supports:
 - Format examples (dicts with 'system', 'user', 'assistant') into training-ready prompt strings
 - Multi-turn dialogue formatting (list of turns)
 - Role mapping for template compatibility
+- Prompt trimming utility for length control
 
 Templates:
   - Phi: <|system|> <|user|> <|assistant|> tokens
@@ -17,6 +18,7 @@ Usage:
     prompt = format_prompt(example, model_family="qwen")
     prompt = format_prompt(example, model_family="llama3")
     prompt = format_multi_turn_prompt(dialogue, model_family="phi")
+    trimmed = trim_prompt(prompt, max_length=2048, tokenizer=my_tokenizer)
 
 Args:
     example: dict with keys ('system', 'user', 'assistant')
@@ -24,12 +26,14 @@ Args:
     add_system: whether to include system message if present
     dialogue: list of dicts with 'role' and 'content' (for multi-turn)
     system_message: optional str for multi-turn prompt (prepended)
+    trim_prompt: trims a string prompt to max tokens, optionally preserving suffix/answer
 
 Returns:
     Prompt string formatted for model family.
     For multi-turn: roles are mapped to template keys if possible.
+    For trimming: string with tokens <= max_length
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 CHAT_TEMPLATES = {
     "phi": {
@@ -155,3 +159,54 @@ def format_multi_turn_prompt(
             else:
                 continue
     return ''.join(parts)
+
+
+def trim_prompt(
+    prompt: str,
+    max_length: int,
+    tokenizer,
+    preserve_suffix: bool = False,
+    answer_delimiter: Optional[str] = None
+) -> str:
+    """
+    Trims a string prompt to max_length tokens using the provided tokenizer.
+    Optionally preserves the answer/suffix if answer_delimiter is provided.
+    Args:
+        prompt: string prompt to trim
+        max_length: max tokens (inclusive)
+        tokenizer: HF tokenizer (must have encode/decode)
+        preserve_suffix: if True and answer_delimiter is present, preserve answer after delimiter
+        answer_delimiter: string delimiter signaling start of answer (e.g. '<|assistant|>')
+    Returns:
+        trimmed string prompt
+    """
+    if max_length <= 0:
+        return prompt
+    # If preserving suffix/answer, try to keep answer section
+    if preserve_suffix and answer_delimiter and answer_delimiter in prompt:
+        parts = prompt.split(answer_delimiter, 1)
+        prefix = parts[0]
+        answer = answer_delimiter + parts[1]
+        prefix_tokens = tokenizer.encode(prefix, add_special_tokens=True)
+        answer_tokens = tokenizer.encode(answer, add_special_tokens=True)
+        # If answer itself is too long, truncate answer
+        if len(answer_tokens) > max_length:
+            answer_tokens = answer_tokens[:max_length]
+            trimmed = tokenizer.decode(answer_tokens, skip_special_tokens=False)
+            return trimmed
+        # Truncate prefix to fit max_length - answer
+        prefix_budget = max_length - len(answer_tokens)
+        if prefix_budget > 0:
+            prefix_tokens = prefix_tokens[:prefix_budget]
+            trimmed_prefix = tokenizer.decode(prefix_tokens, skip_special_tokens=False)
+            return trimmed_prefix + answer
+        else:
+            # Only enough room for answer
+            return answer
+    else:
+        tokens = tokenizer.encode(prompt, add_special_tokens=True)
+        if len(tokens) <= max_length:
+            return prompt
+        tokens = tokens[:max_length]
+        trimmed = tokenizer.decode(tokens, skip_special_tokens=False)
+        return trimmed
