@@ -1,3 +1,12 @@
+"""
+Example usage for prompt_formatter.py: formatting a single chat example.
+
+This script demonstrates how to use format_prompt to generate training-ready
+prompt strings for different model families (Phi, Qwen, Llama-3).
+
+Run directly to see formatted outputs for a sample example.
+See example_prompt_formatter_batch.py for batch formatting.
+"""
 from src.prompt_formatter import format_prompt
 
 if __name__ == "__main__":
