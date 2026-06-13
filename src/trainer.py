@@ -75,7 +75,7 @@ def get_training_args(cfg: TrainConfig):
         weight_decay=cfg.weight_decay,
         fp16=True,
         report_to=[],
-        resume_from_checkpoint=cfg.resume_from,
+        resume_from_checkpoint=cfg.resume_from if cfg.resume_from else None,
         gradient_checkpointing=cfg.gradient_checkpointing,
     )
 
