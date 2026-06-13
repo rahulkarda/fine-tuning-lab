@@ -3,15 +3,15 @@ Dataset/file utilities for fine-tuning-lab.
 
 Includes:
 - count_jsonl_lines: quick count of dataset examples
-- validate_jsonl_schema: schema validation for JSONL datasets
 - load_jsonl: load JSONL as list of dicts
 - save_jsonl: save list of dicts to JSONL file
-- get_token_length_distribution: token length stats for dataset
+- validate_jsonl_schema: schema validation for JSONL datasets
 - train_val_split: random split of dataset with seed control
-- get_model_family_from_name: extract model family string from base model name
+- get_token_length_distribution: token length stats for dataset
 - deduplicate_jsonl: remove duplicate lines from a JSONL file
 - filter_jsonl_by_schema: filter a JSONL file by a schema function and save only valid lines
 - shard_jsonl: split a JSONL file into N shards of roughly equal size
+- get_model_family_from_name: extract model family string from base model name
 
 Useful for dataset stats, validation, and loading.
 """
@@ -22,8 +22,9 @@ import os
 
 def count_jsonl_lines(path: str) -> int:
     """
-    Count the number of lines (examples) in a jsonl file.
-    Returns the number of non-empty lines.
+    Count the number of non-empty lines (examples) in a JSONL file.
+    Returns:
+        int: number of non-empty lines
     """
     count = 0
     with open(path, 'r', encoding='utf-8') as f:
@@ -32,10 +33,39 @@ def count_jsonl_lines(path: str) -> int:
                 count += 1
     return count
 
+
+def load_jsonl(path: str) -> List[Dict[str, Any]]:
+    """
+    Load a JSONL file into a list of dicts.
+    Ignores empty or blank lines.
+    Returns:
+        List[Dict[str, Any]]: loaded items
+    """
+    items = []
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            items.append(obj)
+    return items
+
+
+def save_jsonl(data: List[Dict[str, Any]], path: str) -> None:
+    """
+    Save a list of dicts to a JSONL file.
+    Each dict is written as a line of JSON.
+    """
+    with open(path, 'w', encoding='utf-8') as f:
+        for item in data:
+            f.write(json.dumps(item, ensure_ascii=False) + '\n')
+
+
 def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]) -> int:
     """
-    Validate each line in a jsonl file against a schema function.
-    Returns the number of invalid examples.
+    Validate each line in a JSONL file against a schema function.
+    Returns:
+        int: number of invalid examples
     Ignores empty or blank lines.
     """
     invalid_count = 0
@@ -52,29 +82,35 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Dict[str, Any]], bool]
                 invalid_count += 1
     return invalid_count
 
-def load_jsonl(path: str) -> List[Dict[str, Any]]:
-    """
-    Load a jsonl file into a list of dicts.
-    Each line must be valid JSON.
-    Ignores empty or blank lines.
-    """
-    items = []
-    with open(path, 'r', encoding='utf-8') as f:
-        for line in f:
-            if not line.strip():
-                continue
-            obj = json.loads(line)
-            items.append(obj)
-    return items
 
-def save_jsonl(data: List[Dict[str, Any]], path: str) -> None:
+def train_val_split(
+    data: List[Any],
+    val_ratio: float = 0.1,
+    seed: Optional[int] = None
+) -> Tuple[List[Any], List[Any]]:
     """
-    Save a list of dicts to a jsonl file.
-    Each dict is written as a line of JSON.
+    Randomly split dataset into train and validation sets with seed control.
+    Args:
+        data: list of items
+        val_ratio: fraction of items to assign to val set (0 < val_ratio < 1)
+        seed: random seed for reproducibility
+    Returns:
+        train, val: (list, list)
     """
-    with open(path, 'w', encoding='utf-8') as f:
-        for item in data:
-            f.write(json.dumps(item, ensure_ascii=False) + '\n')
+    if not 0 < val_ratio < 1:
+        raise ValueError("val_ratio must be in (0, 1)")
+    num_items = len(data)
+    val_size = max(1, int(num_items * val_ratio)) if num_items > 0 and val_ratio > 0 else 0
+    indices = list(range(num_items))
+    if seed is not None:
+        random.seed(seed)
+    random.shuffle(indices)
+    val_indices = indices[:val_size]
+    train_indices = indices[val_size:]
+    val = [data[i] for i in val_indices]
+    train = [data[i] for i in train_indices]
+    return train, val
+
 
 def get_token_length_distribution(
     data: List[Dict[str, Any]],
@@ -85,12 +121,12 @@ def get_token_length_distribution(
     """
     Compute token length distribution for a dataset.
     Args:
-      data: list of dicts (from load_jsonl)
-      text_key: key in dict to tokenize
-      tokenizer: HuggingFace tokenizer (required)
-      max_items: if set, only process up to this many items
+        data: list of dicts (from load_jsonl)
+        text_key: key in dict to tokenize
+        tokenizer: HuggingFace tokenizer (required)
+        max_items: if set, only process up to this many items
     Returns:
-      dict with stats: min, max, mean, median, lengths
+        dict with stats: min, max, mean, median, lengths
     """
     if tokenizer is None:
         raise ValueError("Tokenizer must be provided")
@@ -105,7 +141,6 @@ def get_token_length_distribution(
         tokens = tokenizer.encode(text, add_special_tokens=True)
         if tokens is None:
             continue
-        # Accept either list or tensor, but skip dicts
         if hasattr(tokens, 'tolist'):
             tokens_list = tokens.tolist()
         elif isinstance(tokens, dict):
@@ -131,111 +166,71 @@ def get_token_length_distribution(
         "lengths": sorted_lengths
     }
 
-def train_val_split(
-    data: List[Any],
-    val_ratio: float = 0.1,
-    seed: Optional[int] = None
-) -> Tuple[List[Any], List[Any]]:
-    """
-    Randomly split dataset into train and validation sets with seed control.
-    Args:
-      data: list of items
-      val_ratio: fraction of items to assign to val set (0 < val_ratio < 1)
-      seed: random seed for reproducibility
-    Returns:
-      train, val: (list, list)
-    """
-    if not 0 < val_ratio < 1:
-        raise ValueError("val_ratio must be in (0, 1)")
-    num_items = len(data)
-    # Ensure at least 1 item in val set if val_ratio > 0 and num_items > 0
-    val_size = max(1, int(num_items * val_ratio)) if num_items > 0 and val_ratio > 0 else 0
-    if val_size > num_items:
-        val_size = num_items
-    indices = list(range(num_items))
-    rnd = random.Random(seed) if seed is not None else random
-    rnd.shuffle(indices)
-    val_indices = indices[:val_size]
-    train_indices = indices[val_size:]
-    val = [data[i] for i in val_indices]
-    train = [data[i] for i in train_indices]
-    return train, val
-
-def get_model_family_from_name(model_name: str) -> str:
-    """
-    Returns model family string ('phi', 'qwen', 'llama3', etc) from base model name.
-    """
-    lower_name = model_name.lower()
-    if "phi" in lower_name:
-        return "phi"
-    if "qwen" in lower_name:
-        return "qwen"
-    if "llama" in lower_name or "llama-3" in lower_name:
-        return "llama3"
-    return "unknown"
 
 def deduplicate_jsonl(input_path: str, output_path: str) -> int:
     """
-    Removes duplicate lines from a JSONL file.
+    Remove duplicate lines from a JSONL file.
     Args:
-        input_path: path to input JSONL
-        output_path: path to output JSONL
+        input_path: source JSONL
+        output_path: deduplicated JSONL
     Returns:
-        Number of unique lines written
+        int: number of unique lines written
     """
     seen = set()
-    count = 0
-    with open(input_path, 'r', encoding='utf-8') as fin, open(output_path, 'w', encoding='utf-8') as fout:
-        for line in fin:
-            line_strip = line.strip()
-            if not line_strip:
-                continue
-            if line_strip not in seen:
-                fout.write(line)
-                seen.add(line_strip)
-                count += 1
-    return count
+    unique_lines = []
+    with open(input_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            l = line.strip()
+            if l and l not in seen:
+                seen.add(l)
+                unique_lines.append(line)
+    with open(output_path, 'w', encoding='utf-8') as fout:
+        fout.writelines(unique_lines)
+    return len(unique_lines)
 
-def filter_jsonl_by_schema(input_path: str, output_path: str, schema_fn: Callable[[Dict[str, Any]], bool]) -> int:
+
+def filter_jsonl_by_schema(
+    input_path: str,
+    output_path: str,
+    schema_fn: Callable[[Dict[str, Any]], bool]
+) -> int:
     """
-    Filters a JSONL file by a schema function. Writes only valid lines.
+    Filter a JSONL file by a schema function and save only valid lines.
     Args:
-        input_path: path to input JSONL
-        output_path: path to output JSONL
-        schema_fn: function taking dict, returns bool
+        input_path: source JSONL
+        output_path: filtered JSONL
+        schema_fn: function returning True if item is valid
     Returns:
-        Number of valid lines written
+        int: number of valid lines written
     """
-    written = 0
+    valid_count = 0
     with open(input_path, 'r', encoding='utf-8') as fin, open(output_path, 'w', encoding='utf-8') as fout:
         for line in fin:
-            line_strip = line.strip()
-            if not line_strip:
+            if not line.strip():
                 continue
             try:
-                obj = json.loads(line_strip)
+                obj = json.loads(line)
             except Exception:
                 continue
             if schema_fn(obj):
                 fout.write(line)
-                written += 1
-    return written
+                valid_count += 1
+    return valid_count
+
 
 def shard_jsonl(input_path: str, output_dir: str, num_shards: int) -> List[str]:
     """
-    Splits a JSONL file into N shards of roughly equal size.
+    Split a JSONL file into N shards of roughly equal size.
     Args:
-        input_path: path to input JSONL
-        output_dir: directory for output shards
+        input_path: source JSONL
+        output_dir: directory for shards
         num_shards: number of shards
     Returns:
-        List of shard file paths
+        List[str]: shard paths
     """
     with open(input_path, 'r', encoding='utf-8') as f:
-        lines = [line for line in f if line.strip()]
+        lines = [l for l in f if l.strip()]
     total = len(lines)
-    if num_shards < 1 or total == 0:
-        return []
     base = total // num_shards
     remainder = total % num_shards
     shard_sizes = [base + 1 if i < remainder else base for i in range(num_shards)]
@@ -249,3 +244,21 @@ def shard_jsonl(input_path: str, output_dir: str, num_shards: int) -> List[str]:
         shard_paths.append(shard_path)
         idx += size
     return shard_paths
+
+
+def get_model_family_from_name(model_name: str) -> Optional[str]:
+    """
+    Extract model family string from base model name.
+    Args:
+        model_name: e.g. 'microsoft/Phi-3-mini-4k-instruct', 'Qwen/Qwen1.5-1.8B', etc.
+    Returns:
+        str: family ('phi', 'qwen', 'llama3'), or None if not recognized
+    """
+    name = model_name.lower()
+    if 'phi' in name:
+        return 'phi'
+    if 'qwen' in name:
+        return 'qwen'
+    if 'llama-3' in name or 'llama3' in name:
+        return 'llama3'
+    return None
