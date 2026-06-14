@@ -155,24 +155,24 @@ def get_token_length_distribution(
     n = len(sorted_lengths)
     mean = sum(sorted_lengths) / n
     median = (
-        (sorted_lengths[n // 2 - 1] + sorted_lengths[n // 2]) / 2
-        if n % 2 == 0 else sorted_lengths[n // 2]
+        (sorted_lengths[n // 2 - 1] + sorted_lengths[n // 2]) / 2 if n % 2 == 0 else sorted_lengths[n // 2]
     )
     return {
         "min": min(sorted_lengths),
         "max": max(sorted_lengths),
         "mean": mean,
         "median": median,
-        "lengths": sorted_lengths
+        "lengths": token_lengths
     }
 
 
 def deduplicate_jsonl(input_path: str, output_path: str) -> int:
     """
-    Remove duplicate lines from a JSONL file.
+    Removes duplicate lines from a JSONL file and writes unique lines to output.
+    Ignores empty or blank lines. Returns the number of lines written.
     Args:
-        input_path: source JSONL
-        output_path: deduplicated JSONL
+        input_path: source JSONL file
+        output_path: deduplicated output JSONL file
     Returns:
         int: number of unique lines written
     """
@@ -180,12 +180,14 @@ def deduplicate_jsonl(input_path: str, output_path: str) -> int:
     unique_lines = []
     with open(input_path, 'r', encoding='utf-8') as f:
         for line in f:
-            l = line.strip()
-            if l and l not in seen:
-                seen.add(l)
+            sline = line.strip()
+            if not sline:
+                continue
+            if sline not in seen:
+                seen.add(sline)
                 unique_lines.append(line)
-    with open(output_path, 'w', encoding='utf-8') as fout:
-        fout.writelines(unique_lines)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.writelines(unique_lines)
     return len(unique_lines)
 
 
@@ -195,54 +197,59 @@ def filter_jsonl_by_schema(
     schema_fn: Callable[[Dict[str, Any]], bool]
 ) -> int:
     """
-    Filter a JSONL file by a schema function and save only valid lines.
+    Filters a JSONL file by a schema function and saves only valid lines.
+    Ignores empty or blank lines.
+    Returns the number of valid lines written.
     Args:
-        input_path: source JSONL
-        output_path: filtered JSONL
-        schema_fn: function returning True if item is valid
+        input_path: source JSONL file
+        output_path: filtered output JSONL file
+        schema_fn: function taking dict, returns True if valid
     Returns:
         int: number of valid lines written
     """
-    valid_count = 0
-    with open(input_path, 'r', encoding='utf-8') as fin, open(output_path, 'w', encoding='utf-8') as fout:
-        for line in fin:
-            if not line.strip():
+    valid_lines = []
+    with open(input_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            sline = line.strip()
+            if not sline:
                 continue
             try:
-                obj = json.loads(line)
+                obj = json.loads(sline)
             except Exception:
                 continue
             if schema_fn(obj):
-                fout.write(line)
-                valid_count += 1
-    return valid_count
+                valid_lines.append(line)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.writelines(valid_lines)
+    return len(valid_lines)
 
 
 def shard_jsonl(input_path: str, output_dir: str, num_shards: int) -> List[str]:
     """
-    Split a JSONL file into N shards of roughly equal size.
+    Splits a JSONL file into N shards of roughly equal size.
+    Ignores empty or blank lines.
     Args:
-        input_path: source JSONL
-        output_dir: directory for shards
+        input_path: source JSONL file
+        output_dir: directory to write shards
         num_shards: number of shards
     Returns:
-        List[str]: shard paths
+        List[str]: paths to shard files
     """
     with open(input_path, 'r', encoding='utf-8') as f:
-        lines = [l for l in f if l.strip()]
-    total = len(lines)
-    base = total // num_shards
-    remainder = total % num_shards
-    shard_sizes = [base + 1 if i < remainder else base for i in range(num_shards)]
+        lines = [line for line in f if line.strip()]
+    n = len(lines)
+    if n == 0:
+        return []
+    shard_size = max(1, n // num_shards)
     shard_paths = []
-    idx = 0
-    os.makedirs(output_dir, exist_ok=True)
-    for i, size in enumerate(shard_sizes):
+    for i in range(num_shards):
+        start = i * shard_size
+        end = (i + 1) * shard_size if i < num_shards - 1 else n
+        shard_lines = lines[start:end]
         shard_path = os.path.join(output_dir, f"shard_{i+1}.jsonl")
         with open(shard_path, 'w', encoding='utf-8') as f:
-            f.writelines(lines[idx:idx+size])
+            f.writelines(shard_lines)
         shard_paths.append(shard_path)
-        idx += size
     return shard_paths
 
 
