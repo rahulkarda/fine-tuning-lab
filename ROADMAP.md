@@ -13,7 +13,7 @@
 - [x] Memory-efficient gradient checkpointing toggle
 
 ## Phase 3: eval
-- [ ] Loss-on-held-out-set
+- [x] Loss-on-held-out-set
 - [ ] Generation quality probe (fixed prompt set)
 - [ ] Diff viewer: base model vs. tuned model on same prompts
 - [ ] Aggregate metrics dashboard
