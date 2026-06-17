@@ -2,7 +2,7 @@
 Data utility functions for JSONL dataset loading, validation, deduplication, and splitting.
 
 Includes:
-- count_jsonl_lines: count non-empty lines in a JSONL file
+- count_jsonl_lines: count non-empty lines in JSONL file
 - load_jsonl: load objects from JSONL, skip blank lines
 - validate_jsonl_schema: check each line against a schema function
 - deduplicate_jsonl: remove duplicate JSONL objects based on hash
@@ -17,7 +17,7 @@ from typing import List, Any, Callable, Optional, Tuple
 
 def count_jsonl_lines(path: str) -> int:
     """
-    Counts number of non-empty lines in a JSONL file.
+    Counts number of non-empty lines in JSONL file.
     """
     with open(path, 'r', encoding='utf-8') as f:
         return sum(1 for line in f if line.strip())
@@ -35,8 +35,12 @@ def load_jsonl(path: str) -> List[Any]:
             try:
                 obj = json.loads(line)
                 data.append(obj)
+            except json.JSONDecodeError:
+                # Skip invalid JSON lines silently
+                continue
             except Exception:
-                pass
+                # Other exceptions (rare), also skip
+                continue
     return data
 
 def validate_jsonl_schema(path: str, schema_fn: Callable[[Any], bool]) -> int:
@@ -74,8 +78,12 @@ def deduplicate_jsonl(path: str, output_path: str) -> None:
                 if key not in seen:
                     seen.add(key)
                     out.write(line + '\n')
+            except json.JSONDecodeError:
+                # Skip invalid JSON lines silently
+                continue
             except Exception:
-                pass
+                # Other exceptions (rare), also skip
+                continue
 
 def train_val_split(
     data: List[Any],
