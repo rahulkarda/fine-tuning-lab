@@ -1,3 +1,16 @@
+"""
+Data utility functions for JSONL dataset loading, validation, deduplication, and splitting.
+
+Includes:
+- count_jsonl_lines: count non-empty lines in a JSONL file
+- load_jsonl: load objects from JSONL, skip blank lines
+- validate_jsonl_schema: check each line against a schema function
+- deduplicate_jsonl: remove duplicate JSONL objects based on hash
+- train_val_split: reproducible train/val split by ratio and seed
+- get_model_family: infer major model family from model name string
+
+Designed for flexible experiment scaffolding and quick data checks.
+"""
 import json
 import random
 from typing import List, Any, Callable, Optional, Tuple
