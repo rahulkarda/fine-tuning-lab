@@ -94,3 +94,21 @@ def train_val_split(
     val = [data[i] for i in val_indices]
     train = [data[i] for i in train_indices]
     return train, val
+
+def get_model_family(model_name: str) -> str:
+    """
+    Infers model family ('phi', 'qwen', 'llama3') from model name string.
+    Useful for auto-selecting prompt template.
+    Args:
+        model_name: model identifier (e.g. 'microsoft/Phi-3-mini-4k-instruct')
+    Returns:
+        family: str ('phi', 'qwen', 'llama3') or 'unknown'
+    """
+    name = model_name.lower()
+    if 'phi' in name:
+        return 'phi'
+    if 'qwen' in name:
+        return 'qwen'
+    if 'llama-3' in name or 'llama3' in name:
+        return 'llama3'
+    return 'unknown'
