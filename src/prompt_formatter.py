@@ -141,23 +141,31 @@ def format_multi_turn_prompt(
     template = CHAT_TEMPLATES[model_family]
     role_map = ROLE_MAP[model_family]
     parts = []
-    if system_message:
+    if system_message is not None and system_message != "":
         parts.append(template['system'].format(system=system_message))
     for turn in dialogue:
+        # Robustly handle missing or None keys
         role = turn.get('role', None)
         content = turn.get('content', None)
         if role is None or content is None:
             continue
-        # Only format roles that are supported in template
-        if role in role_map.values():
-            parts.append(template[role].format(**{role: content}))
+        role_str = str(role).lower() if isinstance(role, str) else None
+        content_str = str(content) if content is not None else None
+        if not role_str or not content_str:
+            continue
+        # Only add non-empty content
+        content_str = content_str.strip()
+        if not content_str:
+            continue
+        mapped_role = role_map.get(role_str, None)
+        if mapped_role is None:
+            # Try lowercasing, fallback to original
+            mapped_role = role_map.get(role_str.lower(), role_str)
+        if mapped_role in template:
+            parts.append(template[mapped_role].format(**{mapped_role: content_str}))
         else:
-            # Try mapping common role names to template keys
-            if role.lower() in role_map:
-                template_key = role_map[role.lower()]
-                parts.append(template[template_key].format(**{template_key: content}))
-            else:
-                continue
+            # Fallback: just append content
+            parts.append(content_str + "\n")
     return ''.join(parts)
 
 
@@ -165,39 +173,28 @@ def trim_prompt(
     prompt: str,
     max_length: int,
     tokenizer,
-    preserve_suffix: bool = False,
-    answer_delimiter: Optional[str] = None
+    answer: Optional[str] = None
 ) -> str:
     """
-    Trims a string prompt to max_length tokens using the provided tokenizer.
-    Optionally preserves the answer/suffix if answer_delimiter is provided.
+    Trims a string prompt to max tokens using tokenizer.
+    If answer is provided, preserves answer as suffix and trims the prefix.
     Args:
-        prompt: string prompt to trim
-        max_length: max tokens (inclusive)
-        tokenizer: HF tokenizer (must have encode/decode)
-        preserve_suffix: if True and answer_delimiter is present, preserve answer after delimiter
-        answer_delimiter: string delimiter signaling start of answer (e.g. '<|assistant|>')
+        prompt: string prompt
+        max_length: max tokens after tokenization
+        tokenizer: HuggingFace tokenizer
+        answer: optional string to preserve as suffix
     Returns:
-        trimmed string prompt
+        Trimmed string
     """
-    if max_length <= 0:
-        return prompt
-    # If preserving suffix/answer, try to keep answer section
-    if preserve_suffix and answer_delimiter and answer_delimiter in prompt:
-        parts = prompt.split(answer_delimiter, 1)
-        prefix = parts[0]
-        answer = answer_delimiter + parts[1]
-        prefix_tokens = tokenizer.encode(prefix, add_special_tokens=True)
-        answer_tokens = tokenizer.encode(answer, add_special_tokens=True)
-        # If answer itself is too long, truncate answer
-        if len(answer_tokens) > max_length:
-            answer_tokens = answer_tokens[:max_length]
-            trimmed = tokenizer.decode(answer_tokens, skip_special_tokens=False)
-            return trimmed
-        # Truncate prefix to fit max_length - answer
+    if answer:
+        answer_tokens = tokenizer.encode(answer, add_special_tokens=False)
+        prompt_tokens = tokenizer.encode(prompt, add_special_tokens=False)
+        total_tokens = len(prompt_tokens) + len(answer_tokens)
+        if total_tokens <= max_length:
+            return prompt + answer
         prefix_budget = max_length - len(answer_tokens)
         if prefix_budget > 0:
-            prefix_tokens = prefix_tokens[:prefix_budget]
+            prefix_tokens = prompt_tokens[:prefix_budget]
             trimmed_prefix = tokenizer.decode(prefix_tokens, skip_special_tokens=False)
             return trimmed_prefix + answer
         else:
