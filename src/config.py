@@ -19,7 +19,7 @@ class TrainConfig:
     lora_alpha: int = 32  # increased alpha for better adaptation
     lora_dropout: float = 0.2  # increased dropout for stronger regularization
     lora_target_modules: tuple = ("q_proj", "v_proj")
-    warmup_ratio: float = 0.08  # increased warmup ratio for smoother ramp-up
+    warmup_ratio: float = 0.02  # reduced warmup ratio for faster convergence
     weight_decay: float = 0.0
     resume_from: Optional[str] = None
     gradient_checkpointing: bool = False  # new toggle
