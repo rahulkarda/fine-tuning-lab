@@ -1,13 +1,14 @@
 """
 Minimal HuggingFace Trainer wrapper for LoRA and full-parameter fine-tuning.
 
-Supports:
-- Loading model and tokenizer (AutoModelForCausalLM, AutoTokenizer)
-- Optional LoRA config via peft
-- TrainingArguments setup with key hyperparameters from TrainConfig
-- MinimalTrainer class: wraps Trainer and exposes .train()
+This module provides:
+- Model and tokenizer loading (AutoModelForCausalLM, AutoTokenizer) for common open models
+- Optional LoRA configuration via peft (parameter-efficient tuning)
+- TrainingArguments setup: batch size, epochs, learning rate, gradient accumulation, checkpointing, etc.
+- MinimalTrainer class: wraps HF Trainer and exposes .train() for easy experiment runs
+- Support for resuming from checkpoint and memory-efficient training
 
-Usage:
+Usage Example:
     from src.config import TrainConfig
     from src.trainer import MinimalTrainer
     cfg = TrainConfig()
