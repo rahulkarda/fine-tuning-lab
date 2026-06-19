@@ -9,12 +9,14 @@ Includes:
 - train_val_split: reproducible train/val split by ratio and seed
 - get_model_family: infer major model family from model name string
 - dataset_stats: quick stats for token length and label balance
+- normalize_text: text normalization for robust comparison
 
 Designed for flexible experiment scaffolding and quick data checks.
 """
 import json
 import random
 from typing import List, Any, Callable, Optional, Tuple, Dict
+import re
 
 
 def count_jsonl_lines(path: str) -> int:
@@ -156,26 +158,19 @@ def dataset_stats(
         tokenizer: HF tokenizer
         prompt_key: which key to tokenize ('user' by default)
         label_key: if provided, counts label frequencies
-        max_samples: if set, only use first N items
+        max_samples: limit number of examples for fast stats
     Returns:
-        dict with 'token_lengths', 'length_stats', and (if label_key) 'label_counts'
+        Dict: {token_lengths, length_stats, (optional) label_counts}
     """
-    if max_samples is not None:
-        items = data[:max_samples]
-    else:
-        items = data
+    items = data[:max_samples] if max_samples is not None else data
     token_lengths = []
     for ex in items:
-        val = ex.get(prompt_key, None)
-        if val is None:
-            token_lengths.append(0)
-        else:
-            tokens = tokenizer.encode(str(val), add_special_tokens=True)
-            token_lengths.append(len(tokens))
+        prompt = ex.get(prompt_key, "")
+        token_lengths.append(len(tokenizer.encode(prompt)))
     length_stats = {
         'min': min(token_lengths) if token_lengths else 0,
         'max': max(token_lengths) if token_lengths else 0,
-        'mean': sum(token_lengths) / len(token_lengths) if token_lengths else 0,
+        'mean': sum(token_lengths)/len(token_lengths) if token_lengths else 0,
         'median': sorted(token_lengths)[len(token_lengths)//2] if token_lengths else 0
     }
     stats = {
@@ -190,3 +185,21 @@ def dataset_stats(
                 label_counts[label] = label_counts.get(label, 0) + 1
         stats['label_counts'] = label_counts
     return stats
+
+
+def normalize_text(text: str) -> str:
+    """
+    Normalizes text for robust comparison:
+    - Lowercases
+    - Strips leading/trailing whitespace
+    - Collapses multiple spaces/tabs/newlines to single space
+    Args:
+        text: input string
+    Returns:
+        normalized string
+    """
+    if not isinstance(text, str):
+        return ""
+    text = text.lower().strip()
+    text = re.sub(r'\s+', ' ', text)
+    return text
