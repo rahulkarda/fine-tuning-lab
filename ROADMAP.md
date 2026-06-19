@@ -14,7 +14,7 @@
 
 ## Phase 3: eval
 - [x] Loss-on-held-out-set
-- [ ] Generation quality probe (fixed prompt set)
+- [x] Generation quality probe (fixed prompt set)
 - [ ] Diff viewer: base model vs. tuned model on same prompts
 - [ ] Aggregate metrics dashboard
 
