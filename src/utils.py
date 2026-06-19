@@ -8,12 +8,14 @@ Includes:
 - deduplicate_jsonl: remove duplicate JSONL objects based on hash
 - train_val_split: reproducible train/val split by ratio and seed
 - get_model_family: infer major model family from model name string
+- dataset_stats: quick stats for token length and label balance
 
 Designed for flexible experiment scaffolding and quick data checks.
 """
 import json
 import random
-from typing import List, Any, Callable, Optional, Tuple
+from typing import List, Any, Callable, Optional, Tuple, Dict
+
 
 def count_jsonl_lines(path: str) -> int:
     """
@@ -21,6 +23,7 @@ def count_jsonl_lines(path: str) -> int:
     """
     with open(path, 'r', encoding='utf-8') as f:
         return sum(1 for line in f if line.strip())
+
 
 def load_jsonl(path: str) -> List[Any]:
     """
@@ -43,6 +46,7 @@ def load_jsonl(path: str) -> List[Any]:
                 continue
     return data
 
+
 def validate_jsonl_schema(path: str, schema_fn: Callable[[Any], bool]) -> int:
     """
     Checks each line in JSONL file against schema_fn.
@@ -61,6 +65,7 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Any], bool]) -> int:
             except Exception:
                 invalid += 1
     return invalid
+
 
 def deduplicate_jsonl(path: str, output_path: str) -> None:
     """
@@ -84,6 +89,7 @@ def deduplicate_jsonl(path: str, output_path: str) -> None:
             except Exception:
                 # Other exceptions (rare), also skip
                 continue
+
 
 def train_val_split(
     data: List[Any],
@@ -116,6 +122,7 @@ def train_val_split(
     train = [data[i] for i in train_indices]
     return train, val
 
+
 def get_model_family(model_name: str) -> str:
     """
     Infers model family ('phi', 'qwen', 'llama3') from model name string.
@@ -133,3 +140,53 @@ def get_model_family(model_name: str) -> str:
     if 'llama-3' in name or 'llama3' in name:
         return 'llama3'
     return 'unknown'
+
+
+def dataset_stats(
+    data: List[Dict[str, Any]],
+    tokenizer,
+    prompt_key: str = 'user',
+    label_key: Optional[str] = None,
+    max_samples: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Computes quick stats for dataset: token length distribution and label balance.
+    Args:
+        data: list of dicts
+        tokenizer: HF tokenizer
+        prompt_key: which key to tokenize ('user' by default)
+        label_key: if provided, counts label frequencies
+        max_samples: if set, only use first N items
+    Returns:
+        dict with 'token_lengths', 'length_stats', and (if label_key) 'label_counts'
+    """
+    if max_samples is not None:
+        items = data[:max_samples]
+    else:
+        items = data
+    token_lengths = []
+    for ex in items:
+        val = ex.get(prompt_key, None)
+        if val is None:
+            token_lengths.append(0)
+        else:
+            tokens = tokenizer.encode(str(val), add_special_tokens=True)
+            token_lengths.append(len(tokens))
+    length_stats = {
+        'min': min(token_lengths) if token_lengths else 0,
+        'max': max(token_lengths) if token_lengths else 0,
+        'mean': sum(token_lengths) / len(token_lengths) if token_lengths else 0,
+        'median': sorted(token_lengths)[len(token_lengths)//2] if token_lengths else 0
+    }
+    stats = {
+        'token_lengths': token_lengths,
+        'length_stats': length_stats
+    }
+    if label_key is not None:
+        label_counts = {}
+        for ex in items:
+            label = ex.get(label_key, None)
+            if label is not None:
+                label_counts[label] = label_counts.get(label, 0) + 1
+        stats['label_counts'] = label_counts
+    return stats
