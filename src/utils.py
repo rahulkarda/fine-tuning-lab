@@ -10,6 +10,7 @@ Includes:
 - get_model_family: infer major model family from model name string
 - dataset_stats: quick stats for token length and label balance
 - normalize_text: text normalization for robust comparison
+- flatten_dict: recursively flatten nested dicts for easier metric aggregation
 
 Designed for flexible experiment scaffolding and quick data checks.
 """
@@ -156,33 +157,33 @@ def dataset_stats(
     Args:
         data: list of dicts
         tokenizer: HF tokenizer
-        prompt_key: which key to tokenize ('user' by default)
-        label_key: if provided, counts label frequencies
-        max_samples: limit number of examples for fast stats
+        prompt_key: which key to tokenize ('user' by defaul
+        label_key: which key to count for balance (optional)
+        max_samples: if set, limit number of samples for speed
     Returns:
-        Dict: {token_lengths, length_stats, (optional) label_counts}
+        stats dict
     """
-    items = data[:max_samples] if max_samples is not None else data
-    token_lengths = []
-    for ex in items:
-        prompt = ex.get(prompt_key, "")
-        token_lengths.append(len(tokenizer.encode(prompt)))
-    length_stats = {
-        'min': min(token_lengths) if token_lengths else 0,
-        'max': max(token_lengths) if token_lengths else 0,
-        'mean': sum(token_lengths)/len(token_lengths) if token_lengths else 0,
-        'median': sorted(token_lengths)[len(token_lengths)//2] if token_lengths else 0
-    }
-    stats = {
-        'token_lengths': token_lengths,
-        'length_stats': length_stats
-    }
+    stats = {}
+    lens = []
+    label_counts = {}
+    sample_data = data[:max_samples] if max_samples is not None else data
+    for item in sample_data:
+        text = item.get(prompt_key, "")
+        if hasattr(tokenizer, "encode"):
+            tokens = tokenizer.encode(text)
+        else:
+            tokens = text.split()
+        lens.append(len(tokens))
+        if label_key is not None and label_key in item:
+            label = item[label_key]
+            label_counts[label] = label_counts.get(label, 0) + 1
+    stats['num_samples'] = len(sample_data)
+    stats['token_length_mean'] = sum(lens) / len(lens) if lens else 0
+    stats['token_length_min'] = min(lens) if lens else 0
+    stats['token_length_max'] = max(lens) if lens else 0
+    stats['token_length_std'] = (sum((x - stats['token_length_mean']) ** 2 for x in lens) / len(lens)) ** 0.5 if lens else 0
     if label_key is not None:
-        label_counts = {}
-        for ex in items:
-            label = ex.get(label_key, None)
-            if label is not None:
-                label_counts[label] = label_counts.get(label, 0) + 1
+        stats['num_labels'] = len(label_counts)
         stats['label_counts'] = label_counts
     return stats
 
@@ -203,3 +204,23 @@ def normalize_text(text: str) -> str:
     text = text.lower().strip()
     text = re.sub(r'\s+', ' ', text)
     return text
+
+
+def flatten_dict(d: Dict[Any, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
+    """
+    Recursively flattens a nested dict into a single-level dict with dot-separated keys.
+    Args:
+        d: dict to flatten
+        parent_key: prefix for keys (used during recursion)
+        sep: separator between nested keys
+    Returns:
+        flat dict: {key: value}
+    """
+    items = {}
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else str(k)
+        if isinstance(v, dict):
+            items.update(flatten_dict(v, new_key, sep=sep))
+        else:
+            items[new_key] = v
+    return items
