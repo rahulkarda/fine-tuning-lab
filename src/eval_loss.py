@@ -1,3 +1,15 @@
+"""
+Held-out loss evaluation utility for HuggingFace Trainer.
+
+Provides:
+- eval_loss_on_dataset: runs evaluation on a held-out dataset (e.g. validation split) and returns average loss.
+
+Usage Example:
+    from transformers import Trainer
+    loss = eval_loss_on_dataset(trainer, eval_dataset)
+
+Use to track loss before/after fine-tuning for comparison.
+"""
 from typing import Any
 from transformers import Trainer
 
