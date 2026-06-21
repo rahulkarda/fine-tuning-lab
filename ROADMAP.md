@@ -16,7 +16,7 @@
 - [x] Loss-on-held-out-set
 - [x] Generation quality probe (fixed prompt set)
 - [x] Diff viewer: base model vs. tuned model on same prompts
-- [ ] Aggregate metrics dashboard
+- [x] Aggregate metrics dashboard
 
 ## Phase 4: experiments
 - [ ] Phi-3-mini on instruction data
