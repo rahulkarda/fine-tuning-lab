@@ -1,5 +1,5 @@
 import os
-from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema, train_val_split, deduplicate_jsonl
+from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema, train_val_split, deduplicate_jsonl, flatten_dict
 
 """
 Basic unit test coverage for core data utilities in src/utils.py.
@@ -10,6 +10,7 @@ Tests:
 - validate_jsonl_schema: checks schema validation logic (missing keys, non-JSON lines)
 - train_val_split: checks split size, reproducibility with seed
 - deduplicate_jsonl: checks deduplication removes duplicate objects
+- flatten_dict: checks recursive flattening of nested dicts
 
 Extend with more tests as utilities are added.
 Run directly for quick check: python src/test_utils.py
@@ -134,9 +135,30 @@ def test_deduplicate_jsonl():
             except PermissionError:
                 pass
 
+def test_flatten_dict():
+    # Test recursive flattening of nested dicts
+    d = {
+        "a": 1,
+        "b": {
+            "c": 2,
+            "d": {
+                "e": 3
+            }
+        },
+        "f": 4
+    }
+    flat = flatten_dict(d)
+    assert flat["a"] == 1, f"Missing key 'a'"
+    assert flat["b.c"] == 2, f"Missing key 'b.c'"
+    assert flat["b.d.e"] == 3, f"Missing key 'b.d.e'"
+    assert flat["f"] == 4, f"Missing key 'f'"
+    assert len(flat) == 4, f"Expected 4 keys, got {len(flat)}"
+    print("test_flatten_dict passed.")
+
 if __name__ == '__main__':
     test_count_jsonl_lines()
     test_load_jsonl()
     test_validate_jsonl_schema()
     test_train_val_split()
     test_deduplicate_jsonl()
+    test_flatten_dict()
