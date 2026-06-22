@@ -17,7 +17,7 @@ class TrainConfig:
     use_lora: bool = True
     lora_r: int = 16  # increased rank for better adaptation
     lora_alpha: int = 32  # increased alpha for better adaptation
-    lora_dropout: float = 0.2  # increased dropout for stronger regularization
+    lora_dropout: float = 0.3  # increased dropout for stronger regularization
     lora_target_modules: tuple = ("q_proj", "v_proj")
     warmup_ratio: float = 0.02  # reduced warmup ratio for faster convergence
     weight_decay: float = 0.0
