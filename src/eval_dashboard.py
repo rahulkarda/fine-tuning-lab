@@ -28,10 +28,12 @@ def aggregate_metrics(results: List[Dict[str, Any]], metric_keys: Optional[List[
     for key in keys:
         values = []
         for res in results:
-            v = res.get(key)
+            v = res.get(key, None)
+            if v is None:
+                continue
             if isinstance(v, list):
-                values.extend(v)
-            elif isinstance(v, (int, float)):
+                values.extend([x for x in v if isinstance(x, (int, float)) and not isinstance(x, bool)])
+            elif isinstance(v, (int, float)) and not isinstance(v, bool):
                 values.append(v)
             # skip non-numeric
         if values:
