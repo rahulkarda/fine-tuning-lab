@@ -13,10 +13,14 @@ Usage Example:
     from src.trainer import MinimalTrainer
     cfg = TrainConfig()
     model, tokenizer = setup_model_and_tokenizer(cfg)
+    # prepare train_dataset as list/dataset of tokenized samples
     trainer = MinimalTrainer(cfg, train_dataset, tokenizer)
     trainer.train()
 
-Intended for quick experiment scaffolding. Extend as needed for eval, callbacks, etc.
+MinimalTrainer handles model setup, Trainer instantiation, and training loop.
+Extend this module for custom callbacks, evaluation, or logging as needed.
+
+Intended for quick experiment scaffolding.
 """
 import os
 from typing import Optional
@@ -41,7 +45,16 @@ def create_lora_config(cfg: TrainConfig):
         task_type="CAUSAL_LM"
     )
 
+
 def setup_model_and_tokenizer(cfg: TrainConfig):
+    """
+    Loads model and tokenizer, applies LoRA if configured.
+    Args:
+        cfg: TrainConfig instance
+    Returns:
+        model: HF model (possibly LoRA-wrapped)
+        tokenizer: HF tokenizer
+    """
     tokenizer = AutoTokenizer.from_pretrained(cfg.base_model, use_fast=True)
     model = AutoModelForCausalLM.from_pretrained(cfg.base_model)
     if cfg.use_lora:
@@ -60,7 +73,11 @@ def setup_model_and_tokenizer(cfg: TrainConfig):
                 pass
     return model, tokenizer
 
+
 def get_training_args(cfg: TrainConfig):
+    """
+    Builds TrainingArguments from config.
+    """
     return TrainingArguments(
         output_dir=cfg.output_dir,
         num_train_epochs=cfg.epochs,
@@ -80,7 +97,19 @@ def get_training_args(cfg: TrainConfig):
         gradient_checkpointing=cfg.gradient_checkpointing,
     )
 
+
 class MinimalTrainer:
+    """
+    Minimal wrapper around HuggingFace Trainer for experiment runs.
+    Handles model setup, Trainer instantiation, and exposes .train().
+    Args:
+        cfg: TrainConfig
+        train_dataset: tokenized dataset for training
+        tokenizer: tokenizer instance
+    Usage:
+        trainer = MinimalTrainer(cfg, train_dataset, tokenizer)
+        trainer.train()
+    """
     def __init__(self, cfg: TrainConfig, train_dataset, tokenizer):
         self.cfg = cfg
         self.model, self.tokenizer = setup_model_and_tokenizer(cfg)
@@ -93,6 +122,11 @@ class MinimalTrainer:
         )
 
     def train(self):
+        """
+        Runs training loop. Handles checkpoint resume if configured.
+        Returns:
+            Trainer output (training state)
+        """
         if self.cfg.resume_from:
             return self.trainer.train(resume_from_checkpoint=self.cfg.resume_from)
         else:
