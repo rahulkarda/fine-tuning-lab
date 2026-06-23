@@ -11,6 +11,7 @@ Includes:
 - dataset_stats: quick stats for token length and label balance
 - normalize_text: text normalization for robust comparison
 - flatten_dict: recursively flatten nested dicts for easier metric aggregation
+- is_numeric: check if value is a numeric type (int/float, not bool)
 
 Designed for flexible experiment scaffolding and quick data checks.
 """
@@ -177,3 +178,11 @@ single-level dict with dot-separated keys.
         else:
             items[new_key] = v
     return items
+
+
+def is_numeric(val: Any) -> bool:
+    """
+    Returns True if val is a numeric scalar (int/float, not bool).
+    Useful for robust metric filtering.
+    """
+    return (isinstance(val, (int, float)) and not isinstance(val, bool))
