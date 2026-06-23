@@ -3,23 +3,24 @@ import numpy as np
 
 """
 Aggregate metrics dashboard utility for evaluation phase.
-- Summarizes generation/eval results across multiple runs or checkpoints
-- Computes aggregate statistics (loss, exact match, length, etc.)
+- Computes summary statistics (mean, std, min, max, count) for numeric metrics across runs/checkpoints
+- Filters non-numeric values, skips missing metrics, robust to mixed result dicts
 - Outputs summary report as dict or printable table
 """
 def aggregate_metrics(results: List[Dict[str, Any]], metric_keys: Optional[List[str]] = None) -> Dict[str, Any]:
     """
-    Aggregates metrics from a list of result dicts.
+    Aggregates numeric metrics from a list of result dicts.
     Args:
         results: list of dicts, each with metrics (e.g. from eval_generation_quality, eval_loss)
-        metric_keys: which metrics to aggregate (default: all keys except 'outputs', 'prompts')
+        metric_keys: which metrics to aggregate (default: all keys except string fields and outputs/prompts)
     Returns:
-        dict with mean, std, min, max per metric
+        dict with mean, std, min, max, count per metric
     """
     if not results:
         return {}
-    # Default: aggregate all numeric keys except string fields
+    # Keys to exclude from aggregation
     exclude_keys = {'outputs', 'prompts', 'base_output', 'tuned_output', 'diff'}
+    # Collect all keys seen in any result dict
     all_keys = set()
     for res in results:
         all_keys.update(res.keys())
@@ -31,13 +32,14 @@ def aggregate_metrics(results: List[Dict[str, Any]], metric_keys: Optional[List[
             v = res.get(key, None)
             if v is None:
                 continue
+            # Accept numeric scalars (int/float, not bool) or numeric lists
             if isinstance(v, list):
                 values.extend([x for x in v if isinstance(x, (int, float)) and not isinstance(x, bool)])
             elif isinstance(v, (int, float)) and not isinstance(v, bool):
                 values.append(v)
-            # skip non-numeric
+            # skip non-numeric types
         if values:
-            arr = np.array(values)
+            arr = np.array(values, dtype=np.float32)
             dashboard[key] = {
                 'mean': float(np.mean(arr)),
                 'std': float(np.std(arr)),
