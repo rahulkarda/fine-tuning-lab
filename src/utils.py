@@ -118,8 +118,12 @@ def train_val_split(
     # Edge case: val_ratio==1 means all data is validation
     if val_ratio == 1:
         return [], list(data)
-    # Edge case: val_ratio very small (but >0) will always reserve at least 1 for val
-    val_size = max(1, int(num_items * val_ratio))
+    # Edge case: val_ratio very small (but >0) will always reserve at least 1 for val if possible
+    val_size = int(num_items * val_ratio)
+    if val_size == 0 and num_items > 1:
+        val_size = 1
+    elif val_size > num_items:
+        val_size = num_items
     indices = list(range(num_items))
     rand = random.Random(seed) if seed is not None else random
     rand.shuffle(indices)
@@ -150,25 +154,59 @@ def get_model_family(model_name: str) -> str:
 
 
 def dataset_stats(
-    data: List[Dict[str, Any]],
-    tokenizer,
-    prompt_key: str = 'user',
+    data: List[Any],
+    tokenizer=None,
     label_key: Optional[str] = None,
-    max_samples: Optional[int] = None
+    text_key: Optional[str] = None,
+    max_items: int = 1000
 ) -> Dict[str, Any]:
     """
-    Computes quick stats for dataset: token length distribution and label balance.
+    Computes quick dataset stats: token length and label balance.
     Args:
-        data: list of dicts
-        toke
-... [truncated]
-single-level dict with dot-separated keys.
-    Args:
-        d: dict to flatten
-        parent_key: prefix for keys (used during recursion)
-        sep: separator between nested keys
+        data: list of dicts or objects
+        tokenizer: optional HF tokenizer for token length stats
+        label_key: key for label field (if any)
+        text_key: key for text field (if any)
+        max_items: max number of items to sample for stats
     Returns:
-        flat dict: {key: value}
+        dict with stats summary
+    """
+    items = data[:max_items]
+    stats = {}
+    if tokenizer and text_key:
+        token_counts = [len(tokenizer.encode(item[text_key]))
+                       for item in items if text_key in item]
+        stats['token_length_mean'] = float(sum(token_counts)/len(token_counts)) if token_counts else 0.0
+        stats['token_length_max'] = max(token_counts) if token_counts else 0
+        stats['token_length_min'] = min(token_counts) if token_counts else 0
+    if label_key:
+        labels = [item[label_key] for item in items if label_key in item]
+        label_counts = {}
+        for lbl in labels:
+            label_counts[lbl] = label_counts.get(lbl, 0) + 1
+        stats['label_balance'] = label_counts
+    stats['num_items'] = len(data)
+    return stats
+
+
+def normalize_text(text: str) -> str:
+    """
+    Normalize text for robust comparison:
+    - lowercase
+    - strip whitespace
+    - collapse multiple spaces
+    - remove non-printable chars
+    """
+    text = text.strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    text = ''.join(c for c in text if c.isprintable())
+    return text
+
+
+def flatten_dict(d: Dict, parent_key: str = '', sep: str = '.') -> Dict:
+    """
+    Recursively flattens nested dicts.
+    E.g. {'a': {'b': 1}} -> {'a.b': 1}
     """
     items = {}
     for k, v in d.items():
