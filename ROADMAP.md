@@ -19,7 +19,7 @@
 - [x] Aggregate metrics dashboard
 
 ## Phase 4: experiments
-- [ ] Phi-3-mini on instruction data
+- [ ] Phi-3-mini on instruction data (started)
 - [ ] Qwen-2.5 on a coding-style dataset
 - [ ] LoRA rank sweep on one fixed dataset
 - [ ] Learning rate finder
