@@ -153,88 +153,77 @@ def get_model_family(model_name: str) -> str:
     return 'unknown'
 
 
-def dataset_stats(
-    dataset: List[dict],
-    input_key: str = "user",
-    output_key: str = "assistant",
-    label_key: Optional[str] = None,
-    tokenizer = None,
-    max_examples: int = 1000
-) -> Dict[str, Any]:
+def dataset_stats(data: List[Dict], label_key: Optional[str] = None, text_key: Optional[str] = None) -> Dict[str, Any]:
     """
-    Computes quick stats for token length and label balance in a dataset.
+    Computes quick stats for token length and label balance.
     Args:
-        dataset: list of dicts (JSONL objects)
-        input_key: key for input prompt (default 'user')
-        output_key: key for output text (default 'assistant')
+        data: list of dicts (dataset objects)
         label_key: key for label (optional)
-        tokenizer: optional HuggingFace tokenizer for token length stats; if None uses char length
-        max_examples: limit for stats calculation (default 1000)
+        text_key: key for text (optional)
     Returns:
-        dict with stats: input_len, output_len (mean, std, min, max), label distribution
+        stats dict: {num_examples, mean_len, std_len, min_len, max_len, label_counts}
     """
+    from collections import Counter
+    lengths = []
+    labels = []
+    for obj in data:
+        if text_key and text_key in obj:
+            txt = obj[text_key]
+            lengths.append(len(txt.split()))
+        elif not text_key:
+            # Try to guess text field
+            for k in ['text', 'prompt', 'user']:
+                if k in obj:
+                    txt = obj[k]
+                    lengths.append(len(str(txt).split()))
+                    break
+        if label_key and label_key in obj:
+            labels.append(obj[label_key])
     stats = {}
-    n = min(len(dataset), max_examples)
-    input_lens = []
-    output_lens = []
-    label_counts = {}
-    for i, item in enumerate(dataset[:n]):
-        inp = str(item.get(input_key, ""))
-        out = str(item.get(output_key, ""))
-        if tokenizer:
-            input_len = len(tokenizer(inp)['input_ids'])
-            output_len = len(tokenizer(out)['input_ids'])
-        else:
-            input_len = len(inp)
-            output_len = len(out)
-        input_lens.append(input_len)
-        output_lens.append(output_len)
-        if label_key:
-            label = item.get(label_key, None)
-            if label is not None:
-                label_counts[label] = label_counts.get(label, 0) + 1
-    def summarize(lens):
-        if not lens:
-            return {"mean": 0, "std": 0, "min": 0, "max": 0}
+    if lengths:
         import numpy as np
-        arr = np.array(lens)
-        return {
-            "mean": float(np.mean(arr)),
-            "std": float(np.std(arr)),
-            "min": int(np.min(arr)),
-            "max": int(np.max(arr))
-        }
-    stats["input_len"] = summarize(input_lens)
-    stats["output_len"] = summarize(output_lens)
-    if label_key:
-        stats["label_distribution"] = label_counts
-    stats["num_examples"] = n
+        arr = np.array(lengths)
+        stats['num_examples'] = len(arr)
+        stats['mean_len'] = float(np.mean(arr))
+        stats['std_len'] = float(np.std(arr))
+        stats['min_len'] = int(np.min(arr))
+        stats['max_len'] = int(np.max(arr))
+    if labels:
+        stats['label_counts'] = dict(Counter(labels))
     return stats
 
 
 def normalize_text(text: str) -> str:
     """
-    Normalizes text for robust comparison (lowercase, strip, collapse whitespace).
+    Normalize text for robust comparison:
+    - Lowercase
+    - Remove surrounding whitespace
+    - Collapse all internal whitespace to single space
+    - Remove control characters
+    Useful for deduplication, exact match eval, or comparison across generations.
     Args:
         text: input string
     Returns:
         normalized string
     """
-    text = text.lower().strip()
-    text = re.sub(r"\s+", " ", text)
+    if not isinstance(text, str):
+        return ""
+    # Remove control characters
+    text = re.sub(r'[\x00-\x1f\x7f]', '', text)
+    # Lowercase
+    text = text.lower()
+    # Strip
+    text = text.strip()
+    # Collapse whitespace
+    text = re.sub(r'\s+', ' ', text)
     return text
 
 
-def flatten_dict(d: dict, parent_key: str = '', sep: str = '.') -> dict:
+def flatten_dict(d: Dict, parent_key: str = '', sep: str = '.') -> Dict:
     """
-    Recursively flattens a nested dict. Keys joined by sep.
-    Useful for aggregating deeply nested metrics.
-    Args:
-        d: dict to flatten
-        parent_key: prefix (used internally)
-        sep: separator (default '.')
-    Returns:
-        flat dict
+    Recursively flattens a nested dict.
+    E.g. {'a': {'b': 2}} -> {'a.b': 2}
+    Useful for aggregating metrics from nested result dicts.
     """
     items = {}
     for k, v in d.items():
