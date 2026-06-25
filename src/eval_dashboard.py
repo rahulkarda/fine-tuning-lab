@@ -18,12 +18,13 @@ def aggregate_metrics(results: List[Dict[str, Any]], metric_keys: Optional[List[
     """
     if not results:
         return {}
-    # Keys to exclude from aggregation
+    # Keys to exclude from aggregation (non-metrics, text fields)
     exclude_keys = {'outputs', 'prompts', 'base_output', 'tuned_output', 'diff'}
     # Collect all keys seen in any result dict
     all_keys = set()
     for res in results:
         all_keys.update(res.keys())
+    # Determine which keys to aggregate
     keys = metric_keys if metric_keys is not None else [k for k in all_keys if k not in exclude_keys]
     dashboard = {}
     for key in keys:
