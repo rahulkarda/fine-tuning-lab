@@ -153,43 +153,31 @@ def get_model_family(model_name: str) -> str:
     return 'unknown'
 
 
-def dataset_stats(data: List[Dict], label_key: Optional[str] = None, text_key: Optional[str] = None) -> Dict[str, Any]:
+def dataset_stats(dataset: List[Any], label_key: Optional[str] = None, token_key: Optional[str] = None) -> Dict[str, Any]:
     """
     Computes quick stats for token length and label balance.
     Args:
-        data: list of dicts (dataset objects)
-        label_key: key for label (optional)
-        text_key: key for text (optional)
+        dataset: list of dicts or objects
+        label_key: optional key for label/target (for balance stats)
+        token_key: optional key for tokenized length (for length stats)
     Returns:
-        stats dict: {num_examples, mean_len, std_len, min_len, max_len, label_counts}
+        dict of stats
     """
-    from collections import Counter
-    lengths = []
-    labels = []
-    for obj in data:
-        if text_key and text_key in obj:
-            txt = obj[text_key]
-            lengths.append(len(txt.split()))
-        elif not text_key:
-            # Try to guess text field
-            for k in ['text', 'prompt', 'user']:
-                if k in obj:
-                    txt = obj[k]
-                    lengths.append(len(str(txt).split()))
-                    break
-        if label_key and label_key in obj:
-            labels.append(obj[label_key])
     stats = {}
-    if lengths:
-        import numpy as np
-        arr = np.array(lengths)
-        stats['num_examples'] = len(arr)
-        stats['mean_len'] = float(np.mean(arr))
-        stats['std_len'] = float(np.std(arr))
-        stats['min_len'] = int(np.min(arr))
-        stats['max_len'] = int(np.max(arr))
-    if labels:
-        stats['label_counts'] = dict(Counter(labels))
+    if token_key:
+        lengths = [len(item.get(token_key, [])) for item in dataset if token_key in item]
+        if lengths:
+            stats['token_length_mean'] = float(sum(lengths) / len(lengths))
+            stats['token_length_min'] = int(min(lengths))
+            stats['token_length_max'] = int(max(lengths))
+            stats['token_length_count'] = len(lengths)
+    if label_key:
+        labels = [item.get(label_key) for item in dataset if label_key in item]
+        label_counts = {}
+        for label in labels:
+            label_counts[label] = label_counts.get(label, 0) + 1
+        stats['label_balance'] = label_counts
+        stats['label_count'] = len(labels)
     return stats
 
 
@@ -197,34 +185,30 @@ def normalize_text(text: str) -> str:
     """
     Normalize text for robust comparison:
     - Lowercase
-    - Remove surrounding whitespace
-    - Collapse all internal whitespace to single space
-    - Remove control characters
-    Useful for deduplication, exact match eval, or comparison across generations.
-    Args:
-        text: input string
-    Returns:
-        normalized string
+    - Strip whitespace
+    - Collapse multiple spaces
     """
     if not isinstance(text, str):
-        return ""
-    # Remove control characters
-    text = re.sub(r'[\x00-\x1f\x7f]', '', text)
-    # Lowercase
-    text = text.lower()
-    # Strip
-    text = text.strip()
-    # Collapse whitespace
+        return str(text)
+    text = text.strip().lower()
     text = re.sub(r'\s+', ' ', text)
     return text
 
 
-def flatten_dict(d: Dict, parent_key: str = '', sep: str = '.') -> Dict:
+def flatten_dict(d: Any, parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
     """
-    Recursively flattens a nested dict.
-    E.g. {'a': {'b': 2}} -> {'a.b': 2}
-    Useful for aggregating metrics from nested result dicts.
+    Recursively flatten nested dicts. Returns flat dict with keys joined by sep.
+    Handles empty input dict and non-dict input gracefully.
+    Args:
+        d: input dict (possibly nested)
+        parent_key: prefix key
+        sep: separator for joined keys
+    Returns:
+        flat dict
     """
+    if not isinstance(d, dict) or not d:
+        # If input is not dict, return empty dict. If empty dict, return empty dict.
+        return {}
     items = {}
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else str(k)
