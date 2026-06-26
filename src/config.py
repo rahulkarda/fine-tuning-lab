@@ -8,11 +8,11 @@ class TrainConfig:
     base_model: str = "microsoft/Phi-3-mini-4k-instruct"
     dataset_path: str = "data/train.jsonl"
     output_dir: str = "outputs/run"
-    epochs: int = 3  # increased default epochs for more robust training
+    epochs: int = 6  # increased default epochs for more robust training
     learning_rate: float = 5e-5  # lowered default learning rate for improved stability
     batch_size: int = 4  # reduced batch size for faster iteration
     grad_accum_steps: int = 4  # reduced grad accum steps for faster iteration
-    max_seq_length: int = 2048  # increased default for longer context
+    max_seq_length: int = 4096  # increased default for longer context
     seed: int = 42
     use_lora: bool = True
     lora_r: int = 16  # increased rank for better adaptation
