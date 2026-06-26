@@ -86,7 +86,7 @@ def get_training_args(cfg: TrainConfig):
         learning_rate=cfg.learning_rate,
         max_steps=-1,
         seed=cfg.seed,
-        logging_steps=10,
+        logging_steps=20,  # was 10
         save_strategy="epoch",
         evaluation_strategy="no",
         warmup_ratio=cfg.warmup_ratio,
@@ -95,6 +95,7 @@ def get_training_args(cfg: TrainConfig):
         report_to=[],
         resume_from_checkpoint=cfg.resume_from if cfg.resume_from else None,
         gradient_checkpointing=cfg.gradient_checkpointing,
+        save_total_limit=2,  # limit to 2 checkpoints to reduce clutter
     )
 
 
