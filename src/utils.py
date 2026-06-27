@@ -153,61 +153,72 @@ def get_model_family(model_name: str) -> str:
     return 'unknown'
 
 
-def dataset_stats(dataset: List[Any], label_key: Optional[str] = None, token_key: Optional[str] = None) -> Dict[str, Any]:
+def dataset_stats(data: List[Any], tokenizer=None, text_key: str = "text", label_key: Optional[str] = None) -> Dict[str, Any]:
     """
-    Computes quick stats for token length and label balance.
+    Computes basic stats for a dataset: token length distribution, label balance.
     Args:
-        dataset: list of dicts or objects
-        label_key: optional key for label/target (for balance stats)
-        token_key: optional key for tokenized length (for length stats)
+        data: list of dicts
+        tokenizer: optional tokenizer (if None, just counts chars)
+        text_key: key for input text
+        label_key: key for label (optional)
     Returns:
-        dict of stats
+        dict with stats
     """
-    stats = {}
-    if token_key:
-        lengths = [len(item.get(token_key, [])) for item in dataset if token_key in item]
-        if lengths:
-            stats['token_length_mean'] = float(sum(lengths) / len(lengths))
-            stats['token_length_min'] = int(min(lengths))
-            stats['token_length_max'] = int(max(lengths))
-            stats['token_length_count'] = len(lengths)
-    if label_key:
-        labels = [item.get(label_key) for item in dataset if label_key in item]
-        label_counts = {}
-        for label in labels:
-            label_counts[label] = label_counts.get(label, 0) + 1
-        stats['label_balance'] = label_counts
-        stats['label_count'] = len(labels)
+    lengths = []
+    labels = []
+    for item in data:
+        text = item.get(text_key, None)
+        if text is None:
+            continue
+        if tokenizer:
+            try:
+                tokens = tokenizer.encode(text)
+                lengths.append(len(tokens))
+            except Exception:
+                lengths.append(len(text))
+        else:
+            lengths.append(len(text))
+        if label_key and label_key in item:
+            labels.append(item[label_key])
+    stats = {
+        "num_examples": len(lengths),
+        "mean_length": float(sum(lengths)) / len(lengths) if lengths else 0.0,
+        "min_length": min(lengths) if lengths else 0,
+        "max_length": max(lengths) if lengths else 0,
+    }
+    if labels:
+        from collections import Counter
+        label_counts = Counter(labels)
+        stats["label_balance"] = dict(label_counts)
     return stats
 
 
-def normalize_text(text: str) -> str:
+def normalize_text(s: str) -> str:
     """
-    Normalize text for robust comparison:
-    - Lowercase
-    - Strip whitespace
-    - Collapse multiple spaces
+    Normalizes text for robust comparison: lowercase, strip, collapse whitespace.
+    Args:
+        s: input string
+    Returns:
+        normalized string
     """
-    if not isinstance(text, str):
-        return str(text)
-    text = text.strip().lower()
-    text = re.sub(r'\s+', ' ', text)
-    return text
+    if not isinstance(s, str):
+        return str(s)
+    s = s.lower().strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
 
 
-def flatten_dict(d: Any, parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
+def flatten_dict(d: Dict[Any, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
     """
-    Recursively flatten nested dicts. Returns flat dict with keys joined by sep.
-    Handles empty input dict and non-dict input gracefully.
+    Recursively flattens a nested dict.
     Args:
         d: input dict (possibly nested)
-        parent_key: prefix key
-        sep: separator for joined keys
+        parent_key: prefix for keys
+        sep: separator between nested keys
     Returns:
-        flat dict
+        flat dict with dot-separated keys
     """
     if not isinstance(d, dict) or not d:
-        # If input is not dict, return empty dict. If empty dict, return empty dict.
         return {}
     items = {}
     for k, v in d.items():
