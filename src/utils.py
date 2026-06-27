@@ -12,6 +12,7 @@ Includes:
 - normalize_text: text normalization for robust comparison
 - flatten_dict: recursively flatten nested dicts for easier metric aggregation
 - is_numeric: check if value is a numeric type (int/float, not bool)
+- sample_jsonl: randomly sample N lines from JSONL file (new)
 
 Designed for flexible experiment scaffolding and quick data checks.
 """
@@ -153,70 +154,63 @@ def get_model_family(model_name: str) -> str:
     return 'unknown'
 
 
-def dataset_stats(data: List[Any], tokenizer=None, text_key: str = "text", label_key: Optional[str] = None) -> Dict[str, Any]:
+def dataset_stats(dataset: List[Dict], label_key: Optional[str] = None, text_key: Optional[str] = None) -> Dict[str, Any]:
     """
-    Computes basic stats for a dataset: token length distribution, label balance.
+    Computes quick stats for token length and label balance.
     Args:
-        data: list of dicts
-        tokenizer: optional tokenizer (if None, just counts chars)
-        text_key: key for input text
-        label_key: key for label (optional)
+        dataset: list of dicts
+        label_key: key for label field (optional)
+        text_key: key for text field (optional)
     Returns:
         dict with stats
     """
+    stats = {}
+    if not dataset:
+        return stats
+    # Token length stats (approximate: by whitespace split)
     lengths = []
-    labels = []
-    for item in data:
-        text = item.get(text_key, None)
-        if text is None:
-            continue
-        if tokenizer:
-            try:
-                tokens = tokenizer.encode(text)
-                lengths.append(len(tokens))
-            except Exception:
-                lengths.append(len(text))
-        else:
-            lengths.append(len(text))
-        if label_key and label_key in item:
-            labels.append(item[label_key])
-    stats = {
-        "num_examples": len(lengths),
-        "mean_length": float(sum(lengths)) / len(lengths) if lengths else 0.0,
-        "min_length": min(lengths) if lengths else 0,
-        "max_length": max(lengths) if lengths else 0,
-    }
-    if labels:
-        from collections import Counter
-        label_counts = Counter(labels)
-        stats["label_balance"] = dict(label_counts)
+    for item in dataset:
+        text = None
+        if text_key and text_key in item:
+            text = item[text_key]
+        elif 'text' in item:
+            text = item['text']
+        elif 'user' in item and 'assistant' in item:
+            text = item['user'] + ' ' + item['assistant']
+        if text:
+            lengths.append(len(text.split()))
+    if lengths:
+        stats['length_min'] = min(lengths)
+        stats['length_max'] = max(lengths)
+        stats['length_mean'] = sum(lengths) / len(lengths)
+    # Label balance
+    if label_key:
+        label_counts = {}
+        for item in dataset:
+            label = item.get(label_key, None)
+            if label is not None:
+                label_counts[label] = label_counts.get(label, 0) + 1
+        stats['label_counts'] = label_counts
     return stats
 
 
-def normalize_text(s: str) -> str:
+def normalize_text(text: str) -> str:
     """
-    Normalizes text for robust comparison: lowercase, strip, collapse whitespace.
-    Args:
-        s: input string
-    Returns:
-        normalized string
+    Normalizes text for robust comparison: lowercasing, whitespace collapsing, punctuation removal.
     """
-    if not isinstance(s, str):
-        return str(s)
-    s = s.lower().strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
+    if not isinstance(text, str):
+        return ''
+    text = text.lower()
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'[\p{P}\p{S}]', '', text)
+    # Remove common punctuation (for environments without re Unicode)
+    text = re.sub(r'[.,!?:;"\'\-]', '', text)
+    return text.strip()
 
 
-def flatten_dict(d: Dict[Any, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
+def flatten_dict(d: Dict, parent_key: str = '', sep: str = '.') -> Dict:
     """
-    Recursively flattens a nested dict.
-    Args:
-        d: input dict (possibly nested)
-        parent_key: prefix for keys
-        sep: separator between nested keys
-    Returns:
-        flat dict with dot-separated keys
+    Recursively flattens nested dicts. Useful for metric aggregation.
     """
     if not isinstance(d, dict) or not d:
         return {}
@@ -236,3 +230,26 @@ def is_numeric(val: Any) -> bool:
     Useful for robust metric filtering.
     """
     return (isinstance(val, (int, float)) and not isinstance(val, bool))
+
+
+def sample_jsonl(path: str, n: int, seed: Optional[int] = None) -> List[Any]:
+    """
+    Randomly samples n objects from a JSONL file (skips blank and invalid lines).
+    Args:
+        path: path to JSONL file
+        n: number of samples to draw
+        seed: random seed for reproducibility
+    Returns:
+        List of sampled JSON objects
+    """
+    # Load all valid objects
+    data = load_jsonl(path)
+    if not data or n <= 0:
+        return []
+    rand = random.Random(seed) if seed is not None else random
+    if n >= len(data):
+        return list(data)
+    indices = list(range(len(data)))
+    rand.shuffle(indices)
+    sample_indices = indices[:n]
+    return [data[i] for i in sample_indices]
