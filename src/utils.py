@@ -13,6 +13,7 @@ Includes:
 - flatten_dict: recursively flatten nested dicts for easier metric aggregation
 - is_numeric: check if value is a numeric type (int/float, not bool)
 - sample_jsonl: randomly sample N lines from JSONL file (new)
+- get_first_non_empty: returns the first non-empty item from a list (new)
 
 Designed for flexible experiment scaffolding and quick data checks.
 """
@@ -149,74 +150,62 @@ def get_model_family(model_name: str) -> str:
         return 'phi'
     if 'qwen' in name:
         return 'qwen'
-    if 'llama-3' in name or 'llama3' in name:
+    if 'llama' in name or 'llama3' in name or 'llama-3' in name:
         return 'llama3'
     return 'unknown'
 
 
-def dataset_stats(dataset: List[Dict], label_key: Optional[str] = None, text_key: Optional[str] = None) -> Dict[str, Any]:
+def dataset_stats(data: List[Any], prompt_key: str = 'prompt', label_key: str = 'label') -> Dict[str, Any]:
     """
     Computes quick stats for token length and label balance.
     Args:
-        dataset: list of dicts
-        label_key: key for label field (optional)
-        text_key: key for text field (optional)
+        data: list of dicts
+        prompt_key: key for prompt text
+        label_key: key for label (optional)
     Returns:
-        dict with stats
+        Dict with token length stats and label balance
     """
-    stats = {}
-    if not dataset:
-        return stats
-    # Token length stats (approximate: by whitespace split)
-    lengths = []
-    for item in dataset:
-        text = None
-        if text_key and text_key in item:
-            text = item[text_key]
-        elif 'text' in item:
-            text = item['text']
-        elif 'user' in item and 'assistant' in item:
-            text = item['user'] + ' ' + item['assistant']
-        if text:
-            lengths.append(len(text.split()))
-    if lengths:
-        stats['length_min'] = min(lengths)
-        stats['length_max'] = max(lengths)
-        stats['length_mean'] = sum(lengths) / len(lengths)
-    # Label balance
-    if label_key:
-        label_counts = {}
-        for item in dataset:
-            label = item.get(label_key, None)
-            if label is not None:
-                label_counts[label] = label_counts.get(label, 0) + 1
-        stats['label_counts'] = label_counts
+    from collections import Counter
+    lengths = [len(str(item.get(prompt_key, ''))) for item in data]
+    label_counts = Counter([str(item.get(label_key, '')) for item in data])
+    stats = {
+        'num_items': len(data),
+        'min_length': min(lengths) if lengths else 0,
+        'max_length': max(lengths) if lengths else 0,
+        'mean_length': sum(lengths) / len(lengths) if lengths else 0,
+        'label_counts': dict(label_counts)
+    }
     return stats
 
 
 def normalize_text(text: str) -> str:
     """
-    Normalizes text for robust comparison: lowercasing, whitespace collapsing, punctuation removal.
+    Normalizes text for robust comparison: trims, lowercases, strips extra spaces.
+    Args:
+        text: input string
+    Returns:
+        normalized string
     """
     if not isinstance(text, str):
         return ''
-    text = text.lower()
-    text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'[\p{P}\p{S}]', '', text)
-    # Remove common punctuation (for environments without re Unicode)
-    text = re.sub(r'[.,!?:;"\'\-]', '', text)
-    return text.strip()
+    return re.sub(r'\s+', ' ', text.strip().lower())
 
 
-def flatten_dict(d: Dict, parent_key: str = '', sep: str = '.') -> Dict:
+def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
     """
-    Recursively flattens nested dicts. Useful for metric aggregation.
+    Recursively flattens nested dicts. Keys joined by sep.
+    Args:
+        d: input dict
+        parent_key: prefix for nested keys
+        sep: separator
+    Returns:
+        flat dict
     """
-    if not isinstance(d, dict) or not d:
-        return {}
     items = {}
+    if not isinstance(d, dict):
+        return items
     for k, v in d.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else str(k)
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
         if isinstance(v, dict):
             items.update(flatten_dict(v, new_key, sep=sep))
         else:
@@ -226,17 +215,16 @@ def flatten_dict(d: Dict, parent_key: str = '', sep: str = '.') -> Dict:
 
 def is_numeric(val: Any) -> bool:
     """
-    Returns True if val is a numeric scalar (int/float, not bool).
-    Useful for robust metric filtering.
+    Checks if value is numeric (int/float, not bool).
     """
-    return (isinstance(val, (int, float)) and not isinstance(val, bool))
+    return isinstance(val, (int, float)) and not isinstance(val, bool)
 
 
 def sample_jsonl(path: str, n: int, seed: Optional[int] = None) -> List[Any]:
     """
-    Randomly samples n objects from a JSONL file (skips blank and invalid lines).
+    Randomly sample n objects from a JSONL file.
     Args:
-        path: path to JSONL file
+        path: input JSONL file
         n: number of samples to draw
         seed: random seed for reproducibility
     Returns:
@@ -253,3 +241,22 @@ def sample_jsonl(path: str, n: int, seed: Optional[int] = None) -> List[Any]:
     rand.shuffle(indices)
     sample_indices = indices[:n]
     return [data[i] for i in sample_indices]
+
+
+def get_first_non_empty(items: List[Any]) -> Optional[Any]:
+    """
+    Returns the first non-empty (not None, not blank string, not empty list/dict) item from a list.
+    Args:
+        items: list of items (Any type)
+    Returns:
+        The first non-empty item, or None if none found.
+    """
+    for item in items:
+        if item is None:
+            continue
+        if isinstance(item, str) and not item.strip():
+            continue
+        if isinstance(item, (list, dict)) and not item:
+            continue
+        return item
+    return None
