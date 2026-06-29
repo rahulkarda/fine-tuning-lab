@@ -35,10 +35,12 @@ def aggregate_metrics(results: List[Dict[str, Any]], metric_keys: Optional[List[
                 continue
             # Accept numeric scalars (int/float, not bool) or numeric lists
             if isinstance(v, list):
-                values.extend([x for x in v if isinstance(x, (int, float)) and not isinstance(x, bool)])
+                values.extend([x for x in v if (isinstance(x, (int, float)) and not isinstance(x, bool))])
             elif isinstance(v, (int, float)) and not isinstance(v, bool):
                 values.append(v)
-            # skip non-numeric types
+            # skip non-numeric types and bools
+        # Filter any bool values that may have slipped through
+        values = [x for x in values if not isinstance(x, bool)]
         if values:
             arr = np.array(values, dtype=np.float32)
             dashboard[key] = {
