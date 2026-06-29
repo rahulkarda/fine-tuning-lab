@@ -15,7 +15,15 @@ Includes:
 - sample_jsonl: randomly sample N lines from JSONL file (new)
 - get_first_non_empty: returns the first non-empty item from a list (new)
 
-Designed for flexible experiment scaffolding and quick data checks.
+Usage notes:
+- All utilities are designed for quick experiment scaffolding: call directly or batch in scripts.
+- load_jsonl and validate_jsonl_schema are robust to blank lines and minor format errors.
+- train_val_split and deduplicate_jsonl support reproducible workflow for small datasets.
+- get_model_family is handy for auto-selecting prompt templates by model name.
+- Use dataset_stats before/after deduplication to check dataset quality.
+- sample_jsonl enables rapid prototyping and debugging on small data slices.
+- flatten_dict is ideal for preparing results for aggregate_metrics or dashboard reporting.
+
 """
 import json
 import random
@@ -143,69 +151,71 @@ def get_model_family(model_name: str) -> str:
     Args:
         model_name: model identifier (e.g. 'microsoft/Phi-3-mini-4k-instruct')
     Returns:
-        family: str ('phi', 'qwen', 'llama3') or 'unknown'
+        family: str ('phi', 'qwen', 'llama3') or '' if unknown
     """
-    name = model_name.lower()
-    if 'phi' in name:
+    lower = model_name.lower()
+    if 'phi' in lower:
         return 'phi'
-    if 'qwen' in name:
+    if 'qwen' in lower:
         return 'qwen'
-    if 'llama' in name or 'llama3' in name or 'llama-3' in name:
+    if 'llama-3' in lower or 'llama3' in lower:
         return 'llama3'
-    return 'unknown'
+    return ''
 
 
-def dataset_stats(data: List[Any], prompt_key: str = 'prompt', label_key: str = 'label') -> Dict[str, Any]:
+def dataset_stats(samples: List[Any], tokenizer=None, input_key="user", label_key="assistant") -> Dict[str, Any]:
     """
-    Computes quick stats for token length and label balance.
+    Compute token length and label balance stats for a dataset.
     Args:
-        data: list of dicts
-        prompt_key: key for prompt text
-        label_key: key for label (optional)
+        samples: list of dicts (chat examples)
+        tokenizer: optional HF tokenizer (for token length)
+        input_key: key for input field
+        label_key: key for output field
     Returns:
-        Dict with token length stats and label balance
+        stats dict with token_length, label_counts (if possible)
     """
-    from collections import Counter
-    lengths = [len(str(item.get(prompt_key, ''))) for item in data]
-    label_counts = Counter([str(item.get(label_key, '')) for item in data])
+    lengths = []
+    label_counts = {}
+    for ex in samples:
+        inp = ex.get(input_key, "")
+        if tokenizer is not None:
+            try:
+                tokens = tokenizer(inp)
+                lengths.append(len(tokens["input_ids"]))
+            except Exception:
+                lengths.append(len(inp.split()))
+        else:
+            lengths.append(len(inp.split()))
+        label = ex.get(label_key, None)
+        if label is not None:
+            label_counts[label] = label_counts.get(label, 0) + 1
     stats = {
-        'num_items': len(data),
-        'min_length': min(lengths) if lengths else 0,
-        'max_length': max(lengths) if lengths else 0,
-        'mean_length': sum(lengths) / len(lengths) if lengths else 0,
-        'label_counts': dict(label_counts)
+        "avg_len": float(np.mean(lengths)) if lengths else 0.0,
+        "min_len": int(np.min(lengths)) if lengths else 0,
+        "max_len": int(np.max(lengths)) if lengths else 0,
+        "label_counts": label_counts
     }
     return stats
 
 
 def normalize_text(text: str) -> str:
     """
-    Normalizes text for robust comparison: trims, lowercases, strips extra spaces.
-    Args:
-        text: input string
-    Returns:
-        normalized string
+    Normalizes text for robust comparison: strips, lowers, removes extra whitespace.
     """
     if not isinstance(text, str):
-        return ''
-    return re.sub(r'\s+', ' ', text.strip().lower())
+        return ""
+    text = text.strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    return text
 
 
 def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
     """
-    Recursively flattens nested dicts. Keys joined by sep.
-    Args:
-        d: input dict
-        parent_key: prefix for nested keys
-        sep: separator
-    Returns:
-        flat dict
+    Recursively flattens nested dicts.
     """
     items = {}
-    if not isinstance(d, dict):
-        return items
     for k, v in d.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        new_key = parent_key + sep + k if parent_key else k
         if isinstance(v, dict):
             items.update(flatten_dict(v, new_key, sep=sep))
         else:
@@ -215,35 +225,29 @@ def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dic
 
 def is_numeric(val: Any) -> bool:
     """
-    Checks if value is numeric (int/float, not bool).
+    Returns True if val is numeric (int/float, not bool).
     """
     return isinstance(val, (int, float)) and not isinstance(val, bool)
 
 
 def sample_jsonl(path: str, n: int, seed: Optional[int] = None) -> List[Any]:
     """
-    Randomly sample n objects from a JSONL file.
-    Args:
-        path: input JSONL file
-        n: number of samples to draw
-        seed: random seed for reproducibility
-    Returns:
-        List of sampled JSON objects
+    Randomly sample n lines from JSONL file.
     """
-    # Load all valid objects
-    data = load_jsonl(path)
-    if not data or n <= 0:
+    lines = []
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                lines.append(line)
+    if not lines:
         return []
     rand = random.Random(seed) if seed is not None else random
-    if n >= len(data):
-        return list(data)
-    indices = list(range(len(data)))
-    rand.shuffle(indices)
-    sample_indices = indices[:n]
-    return [data[i] for i in sample_indices]
+    indices = rand.sample(range(len(lines)), min(n, len(lines)))
+    return [json.loads(lines[i]) for i in indices]
 
 
-def get_first_non_empty(items: List[Any]) -> Optional[Any]:
+def get_first_non_empty(items: List[Any]) -> Any:
     """
     Returns the first non-empty (not None, not blank string, not empty list/dict) item from a list.
     Args:
