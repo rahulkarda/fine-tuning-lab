@@ -9,9 +9,9 @@ class TrainConfig:
     dataset_path: str = "data/train.jsonl"
     output_dir: str = "outputs/run"
     epochs: int = 6  # increased default epochs for more robust training
-    learning_rate: float = 5e-5  # lowered default learning rate for improved stability
-    batch_size: int = 4  # reduced batch size for faster iteration
-    grad_accum_steps: int = 4  # reduced grad accum steps for faster iteration
+    learning_rate: float = 1e-4  # increased learning rate for faster iteration
+    batch_size: int = 2  # further reduced batch size for rapid prototyping
+    grad_accum_steps: int = 2  # reduced grad accum steps for more frequent optimizer updates
     max_seq_length: int = 4096  # increased default for longer context
     seed: int = 42
     use_lora: bool = True
