@@ -136,83 +136,95 @@ def train_val_split(
     elif val_size > num_items:
         val_size = num_items
     indices = list(range(num_items))
-    rand = random.Random(seed) if seed is not None else random
-    rand.shuffle(indices)
-    val_indices = set(indices[:val_size])
-    train = [data[i] for i in range(num_items) if i not in val_indices]
-    val = [data[i] for i in range(num_items) if i in val_indices]
+    if seed is not None:
+        random.seed(seed)
+    random.shuffle(indices)
+    val_indices = indices[:val_size]
+    train_indices = indices[val_size:]
+    val = [data[i] for i in val_indices]
+    train = [data[i] for i in train_indices]
     return train, val
 
 
-def get_model_family(model_name: str) -> str:
+def get_model_family(name: str) -> str:
     """
-    Infers model family (phi, qwen, llama3) from model name string.
-    Returns 'phi', 'qwen', 'llama3', or 'unknown'.
+    Infers model family (phi, qwen, llama3, unknown) from model name string.
     """
-    name = model_name.lower()
+    name = name.lower()
     if 'phi' in name:
         return 'phi'
     if 'qwen' in name:
         return 'qwen'
-    if 'llama-3' in name or 'llama3' in name or re.search(r'\bllama3\b', name):
+    if re.search(r'llama[-_]?3', name) or 'llama3' in name:
         return 'llama3'
     return 'unknown'
 
 
-def dataset_stats(data: List[Any], tokenizer=None, text_key: str = 'text', label_key: str = 'label') -> Dict[str, Any]:
+def dataset_stats(data: List[Dict[str, Any]], text_key: str = 'text', label_key: Optional[str] = None, tokenizer=None) -> Dict[str, Any]:
     """
-    Quick stats for token length and label balance in dataset.
+    Computes token length stats and label balance for a dataset.
     Args:
         data: list of dicts
-        tokenizer: optional tokenizer for token length distribution
-        text_key: which key contains text
-        label_key: which key contains label/class
+        text_key: key for text field
+        label_key: optional key for label field
+        tokenizer: optional tokenizer for token count
     Returns:
-        dict with counts, token lengths, label balance
+        dict of stats
     """
-    stats = {}
-    stats['num_examples'] = len(data)
-    # Token length stats
-    if tokenizer:
-        lens = []
-        for item in data:
-            text = item.get(text_key, '')
-            if not text:
-                continue
-            tokens = tokenizer(text, return_tensors=None)['input_ids']
-            lens.append(len(tokens))
-        stats['token_length_mean'] = sum(lens) / len(lens) if lens else 0
-        stats['token_length_min'] = min(lens) if lens else 0
-        stats['token_length_max'] = max(lens) if lens else 0
-        stats['token_length_std'] = (sum((x - stats['token_length_mean']) ** 2 for x in lens) / len(lens)) ** 0.5 if lens else 0
-    # Label balance stats
+    lengths = []
     label_counts = {}
     for item in data:
-        label = item.get(label_key, None)
-        if label is not None:
-            label_counts[label] = label_counts.get(label, 0) + 1
-    stats['label_balance'] = label_counts
+        text = item.get(text_key, '')
+        if tokenizer is not None:
+            length = len(tokenizer(text)['input_ids'])
+        else:
+            length = len(text.split())
+        lengths.append(length)
+        if label_key:
+            label = item.get(label_key, None)
+            if label is not None:
+                label_counts[label] = label_counts.get(label, 0) + 1
+    stats = {
+        'count': len(data),
+        'min_length': min(lengths) if lengths else 0,
+        'max_length': max(lengths) if lengths else 0,
+        'mean_length': float(sum(lengths) / len(lengths)) if lengths else 0.0,
+    }
+    if label_key:
+        stats['label_counts'] = label_counts
     return stats
 
 
-def normalize_text(text: str) -> str:
+def normalize_text(s: str) -> str:
     """
-    Normalizes text for robust comparison: lower, strip, collapse whitespace.
+    Normalizes text for robust comparison (lowercase, whitespace, punctuation).
     """
-    if not isinstance(text, str):
-        return ''
-    return re.sub(r'\s+', ' ', text.strip().lower())
+    s = s.lower().strip()
+    s = re.sub(r'\s+', ' ', s)
+    s = re.sub(r'[\.,!?;:"]', '', s)
+    return s
 
 
-def flatten_dict(d: Any, parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
+def is_numeric(val: Any) -> bool:
     """
-    Recursively flattens nested dicts. Keys joined with sep.
+    Checks if val is a numeric type (int/float, not bool).
+    """
+    return isinstance(val, (int, float)) and not isinstance(val, bool)
+
+
+def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
+    """
+    Recursively flattens nested dicts.
+    Args:
+        d: input dict
+        parent_key: prefix for recursion
+        sep: separator for keys
+    Returns:
+        flat dict with keys joined by sep
     """
     items = {}
-    if not isinstance(d, dict):
-        return items
     for k, v in d.items():
-        new_key = parent_key + sep + k if parent_key else k
+        new_key = f'{parent_key}{sep}{k}' if parent_key else k
         if isinstance(v, dict):
             items.update(flatten_dict(v, new_key, sep=sep))
         else:
@@ -220,25 +232,25 @@ def flatten_dict(d: Any, parent_key: str = '', sep: str = '.') -> Dict[str, Any]
     return items
 
 
-def is_numeric(val: Any) -> bool:
-    """
-    Returns True if val is int or float (but not bool).
-    """
-    return isinstance(val, (int, float)) and not isinstance(val, bool)
-
-
 def sample_jsonl(path: str, n: int, seed: Optional[int] = None) -> List[Any]:
     """
-    Randomly sample n lines from JSONL file.
+    Randomly samples n lines from JSONL file.
+    Args:
+        path: path to JSONL file
+        n: number of items to sample
+        seed: random seed
+    Returns:
+        list of sampled JSON objects
     """
-    data = load_jsonl(path)
-    if not data:
-        return []
-    rand = random.Random(seed) if seed is not None else random
-    return rand.sample(data, min(n, len(data)))
+    all_data = load_jsonl(path)
+    if seed is not None:
+        random.seed(seed)
+    if n > len(all_data):
+        n = len(all_data)
+    return random.sample(all_data, n)
 
 
-def get_first_non_empty(items: List[Any]) -> Any:
+def get_first_non_empty(items: List[Any]) -> Optional[Any]:
     """
     Returns the first non-empty (not None, not blank string, not empty list/dict) item from a list.
     Args:
@@ -257,7 +269,7 @@ def get_first_non_empty(items: List[Any]) -> Any:
     return None
 
 
-def get_last_non_empty(items: List[Any]) -> Any:
+def get_last_non_empty(items: List[Any]) -> Optional[Any]:
     """
     Returns the last non-empty (not None, not blank string, not empty list/dict) item from a list.
     Args:
