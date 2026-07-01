@@ -1,5 +1,5 @@
 import os
-from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema, train_val_split, deduplicate_jsonl, flatten_dict
+from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema, train_val_split, deduplicate_jsonl, flatten_dict, get_model_family
 
 """
 Basic unit test coverage for core data utilities in src/utils.py.
@@ -11,6 +11,7 @@ Tests:
 - train_val_split: checks split size, reproducibility with seed
 - deduplicate_jsonl: checks deduplication removes duplicate objects
 - flatten_dict: checks recursive flattening of nested dicts
+- get_model_family: tests family inference from typical model names
 
 Extend with more tests as utilities are added.
 Run directly for quick check: python src/test_utils.py
@@ -155,6 +156,24 @@ def test_flatten_dict():
     assert len(flat) == 4, f"Expected 4 keys, got {len(flat)}"
     print("test_flatten_dict passed.")
 
+def test_get_model_family():
+    # Minimal test for get_model_family utility
+    samples = {
+        "microsoft/Phi-3-mini-4k-instruct": "phi",
+        "Qwen/Qwen1.5-7B-Chat": "qwen",
+        "meta-llama/Meta-Llama-3-8B": "llama3",
+        "unknown-model/foobar": "unknown",
+        "Llama-3-Open": "llama3",
+        "qwen2.5-14b": "qwen",
+        "phi3-mixed": "phi",
+        "llama3": "llama3",
+        "llama-3": "llama3"
+    }
+    for name, expected in samples.items():
+        result = get_model_family(name)
+        assert result == expected, f"Model name '{name}' expected family '{expected}', got '{result}'"
+    print("test_get_model_family passed.")
+
 if __name__ == '__main__':
     test_count_jsonl_lines()
     test_load_jsonl()
@@ -162,3 +181,4 @@ if __name__ == '__main__':
     test_train_val_split()
     test_deduplicate_jsonl()
     test_flatten_dict()
+    test_get_model_family()
