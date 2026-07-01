@@ -7,7 +7,17 @@ Aggregate metrics dashboard utility for evaluation phase.
 - Filters non-numeric values, skips missing metrics, robust to mixed result dicts
 - Outputs summary report as dict or printable table
 """
-def aggregate_metrics(results: List[Dict[str, Any]], metric_keys: Optional[List[str]] = None) -> Dict[str, Any]:
+
+def _is_numeric(val: Any) -> bool:
+    """
+    Returns True if val is int or float, but not bool.
+    """
+    return isinstance(val, (int, float)) and not isinstance(val, bool)
+
+def aggregate_metrics(
+    results: List[Dict[str, Any]],
+    metric_keys: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """
     Aggregates numeric metrics from a list of result dicts.
     Args:
@@ -33,14 +43,12 @@ def aggregate_metrics(results: List[Dict[str, Any]], metric_keys: Optional[List[
             v = res.get(key, None)
             if v is None:
                 continue
-            # Accept numeric scalars (int/float, not bool) or numeric lists
+            # Accept numeric scalars or numeric lists, skip bool
             if isinstance(v, list):
-                values.extend([x for x in v if (isinstance(x, (int, float)) and not isinstance(x, bool))])
-            elif isinstance(v, (int, float)) and not isinstance(v, bool):
+                values.extend([x for x in v if _is_numeric(x)])
+            elif _is_numeric(v):
                 values.append(v)
-            # skip non-numeric types and bools
-        # Filter any bool values that may have slipped through
-        values = [x for x in values if not isinstance(x, bool)]
+            # skip non-numeric types
         if values:
             arr = np.array(values, dtype=np.float32)
             dashboard[key] = {
@@ -64,4 +72,9 @@ def print_dashboard(dashboard: Dict[str, Any]) -> None:
         return
     print("Aggregate Metrics Dashboard:")
     for key, stats in dashboard.items():
-        print(f"- {key}: mean={stats['mean']:.4f}, std={stats['std']:.4f}, min={stats['min']:.4f}, max={stats['max']:.4f}, count={stats['count']}")
+        mean = stats.get('mean', float('nan'))
+        std = stats.get('std', float('nan'))
+        minv = stats.get('min', float('nan'))
+        maxv = stats.get('max', float('nan'))
+        count = stats.get('count', 0)
+        print(f"- {key}: mean={mean:.4f}, std={std:.4f}, min={minv:.4f}, max={maxv:.4f}, count={count}")
