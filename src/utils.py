@@ -15,6 +15,7 @@ Includes:
 - sample_jsonl: randomly sample N lines from JSONL file (new)
 - get_first_non_empty: returns the first non-empty item from a list (new)
 - get_last_non_empty: returns the last non-empty item from a list (new)
+- get_non_empty: returns all non-empty items from a list (new)
 
 Usage notes:
 - All utilities are designed for quick experiment scaffolding: call directly or batch in scripts.
@@ -139,70 +140,74 @@ def train_val_split(
     if seed is not None:
         random.seed(seed)
     random.shuffle(indices)
-    val_indices = indices[:val_size]
-    train_indices = indices[val_size:]
-    val = [data[i] for i in val_indices]
-    train = [data[i] for i in train_indices]
+    val_indices = set(indices[:val_size])
+    train = [data[i] for i in indices[val_size:]]
+    val = [data[i] for i in indices[:val_size]]
     return train, val
 
 
-def get_model_family(name: str) -> str:
+def get_model_family(model_name: str) -> str:
     """
     Infers model family (phi, qwen, llama3, unknown) from model name string.
     """
-    name = name.lower()
-    if 'phi' in name:
-        return 'phi'
-    if 'qwen' in name:
-        return 'qwen'
-    if re.search(r'llama[-_]?3', name) or 'llama3' in name:
-        return 'llama3'
-    return 'unknown'
+    name = model_name.lower()
+    if "phi" in name:
+        return "phi"
+    if "qwen" in name:
+        return "qwen"
+    if "llama-3" in name or "llama3" in name or "meta-llama-3" in name:
+        return "llama3"
+    return "unknown"
 
 
-def dataset_stats(data: List[Dict[str, Any]], text_key: str = 'text', label_key: Optional[str] = None, tokenizer=None) -> Dict[str, Any]:
+def dataset_stats(dataset: List[Any], label_key: Optional[str] = None, token_lengths: Optional[List[int]] = None) -> Dict[str, Any]:
     """
-    Computes token length stats and label balance for a dataset.
+    Computes quick stats for token length and label balance.
     Args:
-        data: list of dicts
-        text_key: key for text field
-        label_key: optional key for label field
-        tokenizer: optional tokenizer for token count
+        dataset: list of items
+        label_key: optional key to count label distribution
+        token_lengths: optional precomputed token lengths
     Returns:
         dict of stats
     """
-    lengths = []
-    label_counts = {}
-    for item in data:
-        text = item.get(text_key, '')
-        if tokenizer is not None:
-            length = len(tokenizer(text)['input_ids'])
-        else:
-            length = len(text.split())
-        lengths.append(length)
-        if label_key:
+    stats = {}
+    num_items = len(dataset)
+    stats["num_items"] = num_items
+    if token_lengths is not None:
+        stats["mean_token_length"] = float(sum(token_lengths)/len(token_lengths)) if token_lengths else 0.0
+        stats["max_token_length"] = max(token_lengths) if token_lengths else 0
+        stats["min_token_length"] = min(token_lengths) if token_lengths else 0
+    if label_key:
+        label_counts = {}
+        for item in dataset:
             label = item.get(label_key, None)
             if label is not None:
                 label_counts[label] = label_counts.get(label, 0) + 1
-    stats = {
-        'count': len(data),
-        'min_length': min(lengths) if lengths else 0,
-        'max_length': max(lengths) if lengths else 0,
-        'mean_length': float(sum(lengths) / len(lengths)) if lengths else 0.0,
-    }
-    if label_key:
-        stats['label_counts'] = label_counts
+        stats["label_counts"] = label_counts
     return stats
 
 
-def normalize_text(s: str) -> str:
+def normalize_text(text: str) -> str:
     """
-    Normalizes text for robust comparison (lowercase, whitespace, punctuation).
+    Text normalization for robust comparison: strips, lowercases, removes extra whitespace.
     """
-    s = s.lower().strip()
-    s = re.sub(r'\s+', ' ', s)
-    s = re.sub(r'[\.,!?;:"]', '', s)
-    return s
+    if not isinstance(text, str):
+        return ""
+    return re.sub(r"\s+", " ", text.strip()).lower()
+
+
+def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
+    """
+    Recursively flattens a nested dict. E.g. {"a": {"b": 2}} -> {"a.b": 2}
+    """
+    items = {}
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict) and v:
+            items.update(flatten_dict(v, new_key, sep=sep))
+        else:
+            items[new_key] = v
+    return items
 
 
 def is_numeric(val: Any) -> bool:
@@ -212,45 +217,21 @@ def is_numeric(val: Any) -> bool:
     return isinstance(val, (int, float)) and not isinstance(val, bool)
 
 
-def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
-    """
-    Recursively flattens nested dicts.
-    Args:
-        d: input dict
-        parent_key: prefix for recursion
-        sep: separator for keys
-    Returns:
-        flat dict with keys joined by sep
-    """
-    items = {}
-    for k, v in d.items():
-        new_key = f'{parent_key}{sep}{k}' if parent_key else k
-        if isinstance(v, dict):
-            items.update(flatten_dict(v, new_key, sep=sep))
-        else:
-            items[new_key] = v
-    return items
-
-
 def sample_jsonl(path: str, n: int, seed: Optional[int] = None) -> List[Any]:
     """
-    Randomly samples n lines from JSONL file.
-    Args:
-        path: path to JSONL file
-        n: number of items to sample
-        seed: random seed
-    Returns:
-        list of sampled JSON objects
+    Randomly sample N lines from JSONL file.
     """
-    all_data = load_jsonl(path)
+    data = load_jsonl(path)
+    if not data:
+        return []
     if seed is not None:
         random.seed(seed)
-    if n > len(all_data):
-        n = len(all_data)
-    return random.sample(all_data, n)
+    if n >= len(data):
+        return data
+    return random.sample(data, n)
 
 
-def get_first_non_empty(items: List[Any]) -> Optional[Any]:
+def get_first_non_empty(items: List[Any]) -> Any:
     """
     Returns the first non-empty (not None, not blank string, not empty list/dict) item from a list.
     Args:
@@ -269,7 +250,7 @@ def get_first_non_empty(items: List[Any]) -> Optional[Any]:
     return None
 
 
-def get_last_non_empty(items: List[Any]) -> Optional[Any]:
+def get_last_non_empty(items: List[Any]) -> Any:
     """
     Returns the last non-empty (not None, not blank string, not empty list/dict) item from a list.
     Args:
@@ -286,3 +267,23 @@ def get_last_non_empty(items: List[Any]) -> Optional[Any]:
             continue
         return item
     return None
+
+
+def get_non_empty(items: List[Any]) -> List[Any]:
+    """
+    Returns all non-empty (not None, not blank string, not empty list/dict) items from a list.
+    Args:
+        items: list of items (Any type)
+    Returns:
+        List of all non-empty items.
+    """
+    result = []
+    for item in items:
+        if item is None:
+            continue
+        if isinstance(item, str) and not item.strip():
+            continue
+        if isinstance(item, (list, dict)) and not item:
+            continue
+        result.append(item)
+    return result
