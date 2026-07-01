@@ -16,6 +16,7 @@ Includes:
 - get_first_non_empty: returns the first non-empty item from a list (new)
 - get_last_non_empty: returns the last non-empty item from a list (new)
 - get_non_empty: returns all non-empty items from a list (new)
+- dataset_sample_stats: basic stats on a random sample of dataset items (new)
 
 Usage notes:
 - All utilities are designed for quick experiment scaffolding: call directly or batch in scripts.
@@ -25,6 +26,7 @@ Usage notes:
 - Use dataset_stats before/after deduplication to check dataset quality.
 - sample_jsonl enables rapid prototyping and debugging on small data slices.
 - flatten_dict is ideal for preparing results for aggregate_metrics or dashboard reporting.
+- dataset_sample_stats provides basic statistics on a random subset (lengths, keys, label balance).
 
 """
 import json
@@ -138,106 +140,102 @@ def train_val_split(
         val_size = num_items
     indices = list(range(num_items))
     if seed is not None:
-        random.seed(seed)
-    random.shuffle(indices)
-    val_indices = set(indices[:val_size])
-    train = [data[i] for i in indices[val_size:]]
-    val = [data[i] for i in indices[:val_size]]
-    return train, val
+        random.Random(seed).shuffle(indices)
+    else:
+        random.shuffle(indices)
+    val_indices = indices[:val_size]
+    train_indices = indices[val_size:]
+    val_set = [data[i] for i in val_indices]
+    train_set = [data[i] for i in train_indices]
+    return train_set, val_set
 
 
 def get_model_family(model_name: str) -> str:
     """
-    Infers model family (phi, qwen, llama3, unknown) from model name string.
+    Infers major model family (phi, qwen, llama3, unknown) from model name string.
     """
-    name = model_name.lower()
-    if "phi" in name:
+    mn = model_name.lower()
+    if "phi" in mn:
         return "phi"
-    if "qwen" in name:
+    if "qwen" in mn:
         return "qwen"
-    if "llama-3" in name or "llama3" in name or "meta-llama-3" in name:
+    if "llama-3" in mn or "llama3" in mn:
         return "llama3"
     return "unknown"
 
 
-def dataset_stats(dataset: List[Any], label_key: Optional[str] = None, token_lengths: Optional[List[int]] = None) -> Dict[str, Any]:
+def dataset_stats(dataset: List[Any], label_key: str = "label") -> Dict[str, Any]:
     """
-    Computes quick stats for token length and label balance.
+    Computes token length distribution and label balance for a dataset.
     Args:
-        dataset: list of items
-        label_key: optional key to count label distribution
-        token_lengths: optional precomputed token lengths
+        dataset: list of dicts
+        label_key: key for label field
     Returns:
-        dict of stats
+        Dict with length stats and label counts
     """
-    stats = {}
-    num_items = len(dataset)
-    stats["num_items"] = num_items
-    if token_lengths is not None:
-        stats["mean_token_length"] = float(sum(token_lengths)/len(token_lengths)) if token_lengths else 0.0
-        stats["max_token_length"] = max(token_lengths) if token_lengths else 0
-        stats["min_token_length"] = min(token_lengths) if token_lengths else 0
-    if label_key:
-        label_counts = {}
-        for item in dataset:
-            label = item.get(label_key, None)
-            if label is not None:
-                label_counts[label] = label_counts.get(label, 0) + 1
-        stats["label_counts"] = label_counts
+    lengths = []
+    label_counts = {}
+    for item in dataset:
+        text = item.get("text", "")
+        lengths.append(len(text.split()))
+        label = item.get(label_key, None)
+        if label is not None:
+            label_counts[label] = label_counts.get(label, 0) + 1
+    stats = {
+        "min_len": min(lengths) if lengths else 0,
+        "max_len": max(lengths) if lengths else 0,
+        "mean_len": sum(lengths) / len(lengths) if lengths else 0,
+        "label_counts": label_counts
+    }
     return stats
 
 
 def normalize_text(text: str) -> str:
     """
-    Text normalization for robust comparison: strips, lowercases, removes extra whitespace.
+    Lowercases and strips whitespace for robust string comparison.
     """
-    if not isinstance(text, str):
-        return ""
-    return re.sub(r"\s+", " ", text.strip()).lower()
+    return re.sub(r"\s+", " ", text.strip().lower())
 
 
-def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
+def flatten_dict(d: Any, parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
     """
-    Recursively flattens a nested dict. E.g. {"a": {"b": 2}} -> {"a.b": 2}
+    Recursively flattens nested dicts for easy metric aggregation.
     """
     items = {}
-    for k, v in d.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k
-        if isinstance(v, dict) and v:
-            items.update(flatten_dict(v, new_key, sep=sep))
-        else:
-            items[new_key] = v
+    if isinstance(d, dict):
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.update(flatten_dict(v, new_key, sep=sep))
+            else:
+                items[new_key] = v
+    else:
+        items[parent_key] = d
     return items
 
 
 def is_numeric(val: Any) -> bool:
     """
-    Checks if val is a numeric type (int/float, not bool).
+    Checks if value is numeric (int/float, not bool).
     """
     return isinstance(val, (int, float)) and not isinstance(val, bool)
 
 
-def sample_jsonl(path: str, n: int, seed: Optional[int] = None) -> List[Any]:
+def sample_jsonl(path: str, n: int = 10, seed: Optional[int] = None) -> List[Any]:
     """
     Randomly sample N lines from JSONL file.
     """
     data = load_jsonl(path)
-    if not data:
-        return []
-    if seed is not None:
-        random.seed(seed)
-    if n >= len(data):
+    if not data or n >= len(data):
         return data
-    return random.sample(data, n)
+    rng = random.Random(seed) if seed is not None else random
+    indices = rng.sample(range(len(data)), n)
+    return [data[i] for i in indices]
 
 
 def get_first_non_empty(items: List[Any]) -> Any:
     """
     Returns the first non-empty (not None, not blank string, not empty list/dict) item from a list.
-    Args:
-        items: list of items (Any type)
-    Returns:
-        The first non-empty item, or None if none found.
     """
     for item in items:
         if item is None:
@@ -253,10 +251,6 @@ def get_first_non_empty(items: List[Any]) -> Any:
 def get_last_non_empty(items: List[Any]) -> Any:
     """
     Returns the last non-empty (not None, not blank string, not empty list/dict) item from a list.
-    Args:
-        items: list of items (Any type)
-    Returns:
-        The last non-empty item, or None if none found.
     """
     for item in reversed(items):
         if item is None:
@@ -287,3 +281,45 @@ def get_non_empty(items: List[Any]) -> List[Any]:
             continue
         result.append(item)
     return result
+
+
+def dataset_sample_stats(dataset: List[Any], sample_size: int = 10, seed: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Computes basic stats on a random sample of dataset items:
+    - min/max/mean text length
+    - most common keys
+    - label balance (if label key present)
+    Args:
+        dataset: list of dicts
+        sample_size: number of items to sample (default 10)
+        seed: random seed for reproducibility
+    Returns:
+        Dict of stats
+    """
+    if not dataset:
+        return {}
+    n = min(sample_size, len(dataset))
+    rng = random.Random(seed) if seed is not None else random
+    indices = rng.sample(range(len(dataset)), n)
+    sample = [dataset[i] for i in indices]
+    # Compute text length stats
+    lengths = []
+    keys_counter = {}
+    label_counter = {}
+    for item in sample:
+        text = item.get("text", "")
+        lengths.append(len(text.split()))
+        for k in item.keys():
+            keys_counter[k] = keys_counter.get(k, 0) + 1
+        label = item.get("label", None)
+        if label is not None:
+            label_counter[label] = label_counter.get(label, 0) + 1
+    stats = {
+        "sample_size": n,
+        "min_len": min(lengths) if lengths else 0,
+        "max_len": max(lengths) if lengths else 0,
+        "mean_len": sum(lengths) / len(lengths) if lengths else 0,
+        "most_common_keys": sorted(keys_counter.items(), key=lambda x: -x[1]),
+        "label_counts": label_counter
+    }
+    return stats
