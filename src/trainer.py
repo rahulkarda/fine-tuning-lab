@@ -7,12 +7,14 @@ This module provides:
 - TrainingArguments setup: batch size, epochs, learning rate, gradient accumulation, checkpointing, etc.
 - MinimalTrainer class: wraps HF Trainer and exposes .train() for easy experiment runs
 - Support for resuming from checkpoint and memory-efficient training
+- Utility: count_model_parameters(model, trainable_only=False) for parameter statistics (new)
 
 Usage Example:
     from src.config import TrainConfig
-    from src.trainer import MinimalTrainer
+    from src.trainer import MinimalTrainer, count_model_parameters
     cfg = TrainConfig()
     model, tokenizer = setup_model_and_tokenizer(cfg)
+    param_stats = count_model_parameters(model, trainable_only=True)
     # prepare train_dataset as list/dataset of tokenized samples
     trainer = MinimalTrainer(cfg, train_dataset, tokenizer)
     trainer.train()
@@ -34,6 +36,8 @@ try:
     PEFT_AVAILABLE = True
 except ImportError:
     PEFT_AVAILABLE = False
+
+import torch
 
 def create_lora_config(cfg: TrainConfig):
     return LoraConfig(
@@ -132,3 +136,31 @@ class MinimalTrainer:
             return self.trainer.train(resume_from_checkpoint=self.cfg.resume_from)
         else:
             return self.trainer.train()
+
+
+def count_model_parameters(model, trainable_only: bool = False) -> dict:
+    """
+    Counts parameters in a model. Optionally restricts to trainable parameters (requires_grad).
+    Args:
+        model: PyTorch model (HF or peft-wrapped)
+        trainable_only: if True, counts only parameters where requires_grad is True
+    Returns:
+        dict with total_params, trainable_params, non_trainable_params
+    """
+    total = 0
+    trainable = 0
+    for p in model.parameters():
+        n = p.numel()
+        total += n
+        if p.requires_grad:
+            trainable += n
+    non_trainable = total - trainable
+    stats = {
+        "total_params": total,
+        "trainable_params": trainable,
+        "non_trainable_params": non_trainable
+    }
+    if trainable_only:
+        return {"trainable_params": trainable}
+    else:
+        return stats
