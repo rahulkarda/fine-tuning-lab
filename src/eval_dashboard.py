@@ -6,6 +6,23 @@ Aggregate metrics dashboard utility for evaluation phase.
 - Computes summary statistics (mean, std, min, max, count) for numeric metrics across runs/checkpoints
 - Filters non-numeric values, skips missing metrics, robust to mixed result dicts
 - Outputs summary report as dict or printable table
+
+Usage Example:
+    # After running evals (loss, generation quality, etc.)
+    results = [
+        {'loss': 1.23, 'rouge': 0.3},
+        {'loss': 1.10, 'rouge': 0.32},
+        {'loss': 1.05, 'rouge': 0.35}
+    ]
+    from src.eval_dashboard import aggregate_metrics, print_dashboard
+    dashboard = aggregate_metrics(results)
+    print_dashboard(dashboard)
+
+Notes:
+- Only numeric values (int, float, not bool) are aggregated.
+- Non-metrics keys (outputs, prompts, diffs) are excluded by default.
+- Robust to missing keys: skipped if not present.
+- Designed for quick experiment reporting, not full-featured logging.
 """
 
 def _is_numeric(val: Any) -> bool:
