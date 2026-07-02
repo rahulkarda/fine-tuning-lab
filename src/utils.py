@@ -17,6 +17,7 @@ Includes:
 - get_last_non_empty: returns the last non-empty item from a list (new)
 - get_non_empty: returns all non-empty items from a list (new)
 - dataset_sample_stats: basic stats on a random sample of dataset items (new)
+- deduplicate_texts: remove duplicate text items from a list (new)
 
 Usage notes:
 - All utilities are designed for quick experiment scaffolding: call directly or batch in scripts.
@@ -27,6 +28,7 @@ Usage notes:
 - sample_jsonl enables rapid prototyping and debugging on small data slices.
 - flatten_dict is ideal for preparing results for aggregate_metrics or dashboard reporting.
 - dataset_sample_stats provides basic statistics on a random subset (lengths, keys, label balance).
+- deduplicate_texts is a quick utility for removing duplicate text strings (case-sensitive).
 
 """
 import json
@@ -109,6 +111,24 @@ def deduplicate_jsonl(path: str, output_path: str) -> None:
                 continue
 
 
+def deduplicate_texts(texts: List[str]) -> List[str]:
+    """
+    Removes duplicate text entries (case-sensitive).
+    Preserves order (first occurrence kept).
+    Args:
+        texts: list of strings
+    Returns:
+        list of unique strings (order preserved)
+    """
+    seen = set()
+    unique = []
+    for t in texts:
+        if t not in seen:
+            seen.add(t)
+            unique.append(t)
+    return unique
+
+
 def train_val_split(
     data: List[Any],
     val_ratio: float = 0.1,
@@ -132,177 +152,154 @@ def train_val_split(
     # Edge case: val_ratio==1 means all data is validation
     if val_ratio == 1:
         return [], list(data)
-    # Edge case: val_ratio very small (but >0) will always reserve at least 1 for val if possible
-    val_size = int(num_items * val_ratio)
-    if val_size == 0 and num_items > 1:
-        val_size = 1
-    elif val_size > num_items:
-        val_size = num_items
+    # Edge case: val_ratio very small (but not zero)
     indices = list(range(num_items))
-    if seed is not None:
-        random.Random(seed).shuffle(indices)
-    else:
-        random.shuffle(indices)
+    rnd = random.Random(seed)
+    rnd.shuffle(indices)
+    val_size = int(round(num_items * val_ratio))
     val_indices = indices[:val_size]
     train_indices = indices[val_size:]
-    val_set = [data[i] for i in val_indices]
-    train_set = [data[i] for i in train_indices]
-    return train_set, val_set
+    train = [data[i] for i in train_indices]
+    val = [data[i] for i in val_indices]
+    return train, val
 
 
 def get_model_family(model_name: str) -> str:
     """
-    Infers major model family (phi, qwen, llama3, unknown) from model name string.
+    Infers model family name from model_name string.
+    Returns one of: 'phi', 'qwen', 'llama', 'llama3', etc.
     """
-    mn = model_name.lower()
-    if "phi" in mn:
+    lower = model_name.lower()
+    if "phi" in lower:
         return "phi"
-    if "qwen" in mn:
+    if "qwen" in lower:
         return "qwen"
-    if "llama-3" in mn or "llama3" in mn:
+    if "llama-3" in lower or "llama3" in lower:
         return "llama3"
+    if "llama" in lower:
+        return "llama"
     return "unknown"
 
 
-def dataset_stats(dataset: List[Any], label_key: str = "label") -> Dict[str, Any]:
+def dataset_stats(data: List[Any]) -> Dict[str, Any]:
     """
-    Computes token length distribution and label balance for a dataset.
+    Computes quick stats for token length and label balance.
     Args:
-        dataset: list of dicts
-        label_key: key for label field
+        data: list of dicts
     Returns:
-        Dict with length stats and label counts
+        dict with stats
     """
     lengths = []
-    label_counts = {}
-    for item in dataset:
+    label_counter = {}
+    for item in data:
         text = item.get("text", "")
         lengths.append(len(text.split()))
-        label = item.get(label_key, None)
+        label = item.get("label", None)
         if label is not None:
-            label_counts[label] = label_counts.get(label, 0) + 1
+            label_counter[label] = label_counter.get(label, 0) + 1
     stats = {
+        "num_items": len(data),
         "min_len": min(lengths) if lengths else 0,
         "max_len": max(lengths) if lengths else 0,
         "mean_len": sum(lengths) / len(lengths) if lengths else 0,
-        "label_counts": label_counts
+        "label_counts": label_counter
     }
     return stats
 
 
 def normalize_text(text: str) -> str:
     """
-    Lowercases and strips whitespace for robust string comparison.
+    Normalizes text: lowercasing, strip, and collapse whitespace.
     """
-    return re.sub(r"\s+", " ", text.strip().lower())
+    return re.sub(r'\s+', ' ', text.strip().lower())
 
 
-def flatten_dict(d: Any, parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
+def flatten_dict(d: dict, parent_key: str = '', sep: str = '.') -> dict:
     """
-    Recursively flattens nested dicts for easy metric aggregation.
+    Recursively flattens nested dicts.
+    Args:
+        d: dict
+        parent_key: prefix for keys
+        sep: separator
+    Returns:
+        flat dict
     """
     items = {}
-    if isinstance(d, dict):
-        for k, v in d.items():
-            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-            if isinstance(v, dict):
-                items.update(flatten_dict(v, new_key, sep=sep))
-            else:
-                items[new_key] = v
-    else:
-        items[parent_key] = d
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.update(flatten_dict(v, new_key, sep=sep))
+        else:
+            items[new_key] = v
     return items
 
 
 def is_numeric(val: Any) -> bool:
     """
-    Checks if value is numeric (int/float, not bool).
+    Returns True if value is int or float, not bool.
     """
     return isinstance(val, (int, float)) and not isinstance(val, bool)
 
 
-def sample_jsonl(path: str, n: int = 10, seed: Optional[int] = None) -> List[Any]:
+def sample_jsonl(path: str, n: int, seed: Optional[int] = None) -> List[Any]:
     """
-    Randomly sample N lines from JSONL file.
+    Randomly sample n lines from JSONL file.
+    Args:
+        path: jsonl file
+        n: number of samples
+        seed: random seed
+    Returns:
+        list of sampled objects
     """
     data = load_jsonl(path)
-    if not data or n >= len(data):
+    if n >= len(data):
         return data
-    rng = random.Random(seed) if seed is not None else random
-    indices = rng.sample(range(len(data)), n)
+    rnd = random.Random(seed)
+    indices = rnd.sample(range(len(data)), n)
     return [data[i] for i in indices]
 
 
-def get_first_non_empty(items: List[Any]) -> Any:
+def get_first_non_empty(lst: List[Any]) -> Optional[Any]:
     """
-    Returns the first non-empty (not None, not blank string, not empty list/dict) item from a list.
+    Returns the first non-empty item from a list.
     """
-    for item in items:
-        if item is None:
-            continue
-        if isinstance(item, str) and not item.strip():
-            continue
-        if isinstance(item, (list, dict)) and not item:
-            continue
-        return item
+    for x in lst:
+        if x:
+            return x
     return None
 
 
-def get_last_non_empty(items: List[Any]) -> Any:
+def get_last_non_empty(lst: List[Any]) -> Optional[Any]:
     """
-    Returns the last non-empty (not None, not blank string, not empty list/dict) item from a list.
+    Returns the last non-empty item from a list.
     """
-    for item in reversed(items):
-        if item is None:
-            continue
-        if isinstance(item, str) and not item.strip():
-            continue
-        if isinstance(item, (list, dict)) and not item:
-            continue
-        return item
+    for x in reversed(lst):
+        if x:
+            return x
     return None
 
 
-def get_non_empty(items: List[Any]) -> List[Any]:
+def get_non_empty(lst: List[Any]) -> List[Any]:
     """
-    Returns all non-empty (not None, not blank string, not empty list/dict) items from a list.
-    Args:
-        items: list of items (Any type)
-    Returns:
-        List of all non-empty items.
+    Returns all non-empty items from a list.
     """
-    result = []
-    for item in items:
-        if item is None:
-            continue
-        if isinstance(item, str) and not item.strip():
-            continue
-        if isinstance(item, (list, dict)) and not item:
-            continue
-        result.append(item)
-    return result
+    return [x for x in lst if x]
 
 
-def dataset_sample_stats(dataset: List[Any], sample_size: int = 10, seed: Optional[int] = None) -> Dict[str, Any]:
+def dataset_sample_stats(data: List[Any], n: int = 20, seed: Optional[int] = None) -> Dict[str, Any]:
     """
-    Computes basic stats on a random sample of dataset items:
-    - min/max/mean text length
-    - most common keys
-    - label balance (if label key present)
+    Computes basic stats on a random sample of dataset items.
     Args:
-        dataset: list of dicts
-        sample_size: number of items to sample (default 10)
-        seed: random seed for reproducibility
+        data: list of dicts
+        n: sample size
+        seed: random seed
     Returns:
-        Dict of stats
+        dict with min/max/mean text length, common keys, label balance
     """
-    if not dataset:
+    if not data:
         return {}
-    n = min(sample_size, len(dataset))
-    rng = random.Random(seed) if seed is not None else random
-    indices = rng.sample(range(len(dataset)), n)
-    sample = [dataset[i] for i in indices]
-    # Compute text length stats
+    rnd = random.Random(seed)
+    sample = rnd.sample(data, min(n, len(data)))
     lengths = []
     keys_counter = {}
     label_counter = {}
