@@ -49,10 +49,12 @@ def count_jsonl_lines(path: str) -> int:
 def load_jsonl(path: str) -> List[Any]:
     """
     Loads JSONL file, skips blank lines.
+    Ignores invalid JSON lines, prints one warning per file if any are encountered.
     """
     data = []
+    had_invalid = False
     with open(path, 'r', encoding='utf-8') as f:
-        for line in f:
+        for idx, line in enumerate(f):
             line = line.strip()
             if not line:
                 continue
@@ -60,10 +62,14 @@ def load_jsonl(path: str) -> List[Any]:
                 obj = json.loads(line)
                 data.append(obj)
             except json.JSONDecodeError:
-                # Skip invalid JSON lines silently
+                if not had_invalid:
+                    print(f"Warning: invalid JSON line detected in {path}, line {idx+1}. Skipping.")
+                    had_invalid = True
                 continue
-            except Exception:
-                # Other exceptions (rare), also skip
+            except Exception as e:
+                if not had_invalid:
+                    print(f"Warning: unexpected error loading line {idx+1} of {path}: {e}. Skipping.")
+                    had_invalid = True
                 continue
     return data
 
@@ -71,11 +77,12 @@ def load_jsonl(path: str) -> List[Any]:
 def validate_jsonl_schema(path: str, schema_fn: Callable[[Any], bool]) -> int:
     """
     Checks each line in JSONL file against schema_fn.
-    Returns number of invalid lines.
+    Returns number of invalid lines. Prints one warning if any parsing errors are encountered.
     """
     invalid = 0
+    had_error = False
     with open(path, 'r', encoding='utf-8') as f:
-        for line in f:
+        for idx, line in enumerate(f):
             line = line.strip()
             if not line:
                 continue
@@ -83,8 +90,11 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Any], bool]) -> int:
                 obj = json.loads(line)
                 if not schema_fn(obj):
                     invalid += 1
-            except Exception:
+            except Exception as e:
                 invalid += 1
+                if not had_error:
+                    print(f"Warning: error parsing line {idx+1} in {path}: {e}. Counting as invalid.")
+                    had_error = True
     return invalid
 
 
@@ -135,47 +145,23 @@ def normalize_text(text: str) -> str:
     Normalizes text for robust comparison and deduplication.
     - Lowercases
     - Removes leading/trailing whitespace
-    - Collapses internal whitespace to single space
-    - Strips punctuation
-    Args:
-        text: input string
-    Returns:
-        normalized string
+    - Removes punctuation
+    - Converts multiple spaces to one
     """
-    if not isinstance(text, str):
-        return ''
-    # Lowercase
-    text = text.lower()
-    # Remove leading/trailing whitespace
-    text = text.strip()
-    # Collapse internal whitespace to single space
-    text = re.sub(r'\s+', ' ', text)
-    # Remove punctuation
-    text = re.sub(r'[\p{P}\p{S}]', '', text)
-    # For broader punctuation removal (unicode), fallback:
+    text = text.lower().strip()
     text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'\s+', ' ', text)
     return text
 
 
-def train_val_split(
-    data: List[Any],
-    val_ratio: float = 0.1,
-    seed: Optional[int] = None
-) -> Tuple[List[Any], List[Any]]:
+def train_val_split(data: List[Any], val_ratio: float = 0.1, seed: int = 42) -> Tuple[List[Any], List[Any]]:
     """
-    Randomly split dataset into train and validation sets with seed control.
-    Args:
-        data: list of items
-        val_ratio: fraction of items
-        seed: random seed (optional)
-    Returns:
-        train, val splits (lists)
+    Splits data into train and val sets by ratio. Reproducible by seed.
     """
     n = len(data)
     idx = list(range(n))
-    rng = random.Random(seed)
-    rng.shuffle(idx)
-    val_size = max(1, int(n * val_ratio))
+    random.Random(seed).shuffle(idx)
+    val_size = int(n * val_ratio)
     val_idx = idx[:val_size]
     train_idx = idx[val_size:]
     train = [data[i] for i in train_idx]
@@ -183,19 +169,28 @@ def train_val_split(
     return train, val
 
 
+def get_model_family(name: str) -> str:
+    """
+    Infers model family from name string.
+    Returns one of: 'phi3', 'qwen', 'llama3', 'unknown'
+    """
+    n = name.lower()
+    if 'phi-3' in n or 'phi3' in n:
+        return 'phi3'
+    if 'qwen' in n:
+        return 'qwen'
+    if 'llama-3' in n or 'llama3' in n:
+        return 'llama3'
+    return 'unknown'
+
+
 def flatten_dict(d: dict, parent_key: str = '', sep: str = '.') -> dict:
     """
-    Recursively flattens a nested dict.
-    Args:
-        d: dict to flatten
-        parent_key: prefix for keys
-        sep: separator
-    Returns:
-        flat dict with dotted keys
+    Recursively flattens nested dicts. Useful for metrics aggregation.
     """
     items = {}
     for k, v in d.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        new_key = f'{parent_key}{sep}{k}' if parent_key else k
         if isinstance(v, dict):
             items.update(flatten_dict(v, new_key, sep=sep))
         else:
@@ -205,94 +200,64 @@ def flatten_dict(d: dict, parent_key: str = '', sep: str = '.') -> dict:
 
 def is_numeric(val: Any) -> bool:
     """
-    Returns True if val is int or float, not bool.
+    Returns True if val is int or float, but not bool.
     """
     return isinstance(val, (int, float)) and not isinstance(val, bool)
 
 
-def sample_jsonl(path: str, n: int, seed: Optional[int] = None) -> List[Any]:
+def sample_jsonl(path: str, n: int, seed: int = 42) -> List[Any]:
     """
-    Randomly samples n lines from JSONL file.
-    Args:
-        path: JSONL path
-        n: number of samples
-        seed: random seed
-    Returns:
-        list of sampled objects
+    Randomly samples n items from JSONL file. Robust to blank and invalid lines.
     """
-    all_data = load_jsonl(path)
-    rng = random.Random(seed)
-    if n >= len(all_data):
-        return all_data
-    idx = rng.sample(range(len(all_data)), n)
-    return [all_data[i] for i in idx]
+    all_items = load_jsonl(path)
+    random.Random(seed).shuffle(all_items)
+    return all_items[:n]
 
 
-def get_first_non_empty(items: List[Any]) -> Any:
+def get_first_non_empty(items: List[Any]) -> Optional[Any]:
     """
-    Returns the first non-empty item from a list.
-    Empty means None, '', [], {}
+    Returns the first non-empty (truthy) item, or None.
     """
     for item in items:
-        if item not in (None, '', [], {}):
+        if item:
             return item
     return None
 
 
-def get_last_non_empty(items: List[Any]) -> Any:
+def get_last_non_empty(items: List[Any]) -> Optional[Any]:
     """
-    Returns the last non-empty item from a list.
-    Empty means None, '', [], {}
+    Returns the last non-empty (truthy) item, or None.
     """
     for item in reversed(items):
-        if item not in (None, '', [], {}):
+        if item:
             return item
     return None
 
 
 def get_non_empty(items: List[Any]) -> List[Any]:
     """
-    Returns all non-empty items from a list.
-    Empty means None, '', [], {}
+    Returns all non-empty (truthy) items.
     """
-    return [item for item in items if item not in (None, '', [], {})]
+    return [item for item in items if item]
 
 
-def get_model_family(model_name: str) -> str:
+def dataset_stats(data: List[dict]) -> dict:
     """
-    Infers model family from model name string.
-    Returns one of: 'phi', 'qwen', 'llama3', or 'unknown'
-    """
-    name = model_name.lower()
-    if 'phi' in name:
-        return 'phi'
-    if 'qwen' in name:
-        return 'qwen'
-    if 'llama-3' in name or 'llama3' in name:
-        return 'llama3'
-    return 'unknown'
-
-
-def dataset_stats(data: List[Any], text_key: str = "text", label_key: str = "label") -> dict:
-    """
-    Quick stats for token length and label balance.
-    Args:
-        data: list of dicts
-        text_key: which key to measure lengths
-        label_key: which key for label balance
+    Computes quick stats for a dataset of dict items.
     Returns:
-        dict of stats
+        dict with num_items, min/max/mean length (if 'text' field), label distribution
     """
+    n = len(data)
     lengths = []
     label_counter = {}
     for item in data:
-        text = item.get(text_key, "")
+        text = item.get("text", "")
         lengths.append(len(text))
-        label = item.get(label_key, None)
+        label = item.get("label", None)
         if label is not None:
             label_counter[label] = label_counter.get(label, 0) + 1
     stats = {
-        "count": len(data),
+        "num_items": n,
         "min_len": min(lengths) if lengths else 0,
         "max_len": max(lengths) if lengths else 0,
         "mean_len": sum(lengths) / len(lengths) if lengths else 0,
@@ -301,28 +266,22 @@ def dataset_stats(data: List[Any], text_key: str = "text", label_key: str = "lab
     return stats
 
 
-def dataset_sample_stats(data: List[Any], n: int = 20, seed: Optional[int] = None) -> dict:
+def dataset_sample_stats(data: List[dict], sample_size: int = 50, seed: int = 42) -> dict:
     """
-    Basic stats on a random sample of dataset items.
-    Args:
-        data: list of dicts
-        n: sample size
-        seed: random seed
+    Computes basic stats on a random sample of dataset items.
     Returns:
-        dict of stats
+        dict with sample_size, min/max/mean length (text), most-common keys, label distribution
     """
-    if not data:
-        return {}
-    rng = random.Random(seed)
-    sample = rng.sample(data, min(n, len(data)))
+    n = min(len(data), sample_size)
+    random.Random(seed).shuffle(data)
+    sample = data[:n]
     lengths = []
     keys_counter = {}
     label_counter = {}
     for item in sample:
         text = item.get("text", "")
         lengths.append(len(text))
-        keys = list(item.keys())
-        for k in keys:
+        for k in item.keys():
             keys_counter[k] = keys_counter.get(k, 0) + 1
         label = item.get("label", None)
         if label is not None:
