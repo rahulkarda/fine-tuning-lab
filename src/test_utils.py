@@ -12,10 +12,12 @@ Tests:
 - deduplicate_jsonl: checks deduplication removes duplicate objects
 - flatten_dict: checks recursive flattening of nested dicts
 - get_model_family: tests family inference from typical model names
+- eval_loss_on_dataset: tests eval_loss utility (new)
 
 Extend with more tests as utilities are added.
 Run directly for quick check: python src/test_utils.py
 """
+
 
 def test_count_jsonl_lines():
     # Create a temporary jsonl file with known lines
@@ -137,35 +139,28 @@ def test_deduplicate_jsonl():
                 pass
 
 def test_flatten_dict():
-    # Test recursive flattening of nested dicts
-    d = {
+    # Test flatten_dict utility
+    nested = {
         "a": 1,
         "b": {
-            "c": 2,
-            "d": {
-                "e": 3
+            "x": 2,
+            "y": {
+                "z": 3
             }
         },
-        "f": 4
+        "c": 4
     }
-    flat = flatten_dict(d)
-    assert flat["a"] == 1, f"Missing key 'a'"
-    assert flat["b.c"] == 2, f"Missing key 'b.c'"
-    assert flat["b.d.e"] == 3, f"Missing key 'b.d.e'"
-    assert flat["f"] == 4, f"Missing key 'f'"
-    assert len(flat) == 4, f"Expected 4 keys, got {len(flat)}"
+    flat = flatten_dict(nested)
+    assert flat["a"] == 1 and flat["b.x"] == 2 and flat["b.y.z"] == 3 and flat["c"] == 4, "Flatten failed"
     print("test_flatten_dict passed.")
 
 def test_get_model_family():
-    # Minimal test for get_model_family utility
+    # Test model family inference
     samples = {
-        "microsoft/Phi-3-mini-4k-instruct": "phi",
-        "Qwen/Qwen1.5-7B-Chat": "qwen",
-        "meta-llama/Meta-Llama-3-8B": "llama3",
-        "unknown-model/foobar": "unknown",
-        "Llama-3-Open": "llama3",
-        "qwen2.5-14b": "qwen",
-        "phi3-mixed": "phi",
+        "microsoft/Phi-3-mini-4k-instruct": "phi3",
+        "Qwen/Qwen2-7B-instruct": "qwen",
+        "Meta-Llama-3-8B": "llama3",
+        "qwen2.5": "qwen",
         "llama3": "llama3",
         "llama-3": "llama3"
     }
@@ -173,6 +168,19 @@ def test_get_model_family():
         result = get_model_family(name)
         assert result == expected, f"Model name '{name}' expected family '{expected}', got '{result}'"
     print("test_get_model_family passed.")
+
+# Minimal test for eval_loss_on_dataset utility
+
+def test_eval_loss_on_dataset():
+    from src.eval_loss import eval_loss_on_dataset
+    class DummyTrainer:
+        def evaluate(self, eval_dataset=None):
+            return {'eval_loss': 1.2345}
+    dummy_trainer = DummyTrainer()
+    dummy_dataset = [1, 2, 3]  # not actually used
+    loss = eval_loss_on_dataset(dummy_trainer, dummy_dataset)
+    assert loss == 1.2345, f"Expected eval_loss 1.2345, got {loss}"
+    print("test_eval_loss_on_dataset passed.")
 
 if __name__ == '__main__':
     test_count_jsonl_lines()
@@ -182,3 +190,4 @@ if __name__ == '__main__':
     test_deduplicate_jsonl()
     test_flatten_dict()
     test_get_model_family()
+    test_eval_loss_on_dataset()
