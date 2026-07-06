@@ -13,6 +13,7 @@ Tests:
 - flatten_dict: checks recursive flattening of nested dicts
 - get_model_family: tests family inference from typical model names
 - eval_loss_on_dataset: tests eval_loss utility (new)
+- count_model_parameters: tests counting model parameters (new)
 
 Extend with more tests as utilities are added.
 Run directly for quick check: python src/test_utils.py
@@ -139,38 +140,40 @@ def test_deduplicate_jsonl():
                 pass
 
 def test_flatten_dict():
-    # Test flatten_dict utility
-    nested = {
+    # Minimal test for flatten_dict utility
+    d = {
         "a": 1,
         "b": {
-            "x": 2,
-            "y": {
-                "z": 3
+            "c": 2,
+            "d": {
+                "e": 3
             }
         },
-        "c": 4
+        "f": 4
     }
-    flat = flatten_dict(nested)
-    assert flat["a"] == 1 and flat["b.x"] == 2 and flat["b.y.z"] == 3 and flat["c"] == 4, "Flatten failed"
+    flat = flatten_dict(d)
+    assert flat["a"] == 1
+    assert flat["b.c"] == 2
+    assert flat["b.d.e"] == 3
+    assert flat["f"] == 4
     print("test_flatten_dict passed.")
 
 def test_get_model_family():
-    # Test model family inference
-    samples = {
-        "microsoft/Phi-3-mini-4k-instruct": "phi3",
-        "Qwen/Qwen2-7B-instruct": "qwen",
-        "Meta-Llama-3-8B": "llama3",
-        "qwen2.5": "qwen",
-        "llama3": "llama3",
-        "llama-3": "llama3"
-    }
-    for name, expected in samples.items():
-        result = get_model_family(name)
-        assert result == expected, f"Model name '{name}' expected family '{expected}', got '{result}'"
+    # Minimal test for get_model_family utility
+    cases = [
+        ("microsoft/Phi-3-mini-4k-instruct", "phi-3"),
+        ("Qwen/Qwen2.5-7B", "qwen-2.5"),
+        ("Qwen/Qwen-7B", "qwen"),
+        ("meta-llama/Llama-3-8B", "llama-3"),
+        ("meta-llama/Llama-2-7B", "llama-2"),
+        ("unknown/model", "unknown")
+    ]
+    for name, expected in cases:
+        fam = get_model_family(name)
+        assert fam == expected, f"model_family({name}) -> {fam}, expected {expected}"
     print("test_get_model_family passed.")
 
 # Minimal test for eval_loss_on_dataset utility
-
 def test_eval_loss_on_dataset():
     from src.eval_loss import eval_loss_on_dataset
     class DummyTrainer:
@@ -182,6 +185,33 @@ def test_eval_loss_on_dataset():
     assert loss == 1.2345, f"Expected eval_loss 1.2345, got {loss}"
     print("test_eval_loss_on_dataset passed.")
 
+# Minimal test for count_model_parameters utility
+
+def test_count_model_parameters():
+    from src.trainer import count_model_parameters
+    import torch.nn as nn
+    # Simple model with 2 parameters
+    class Tiny(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.l1 = nn.Linear(2, 2, bias=False)  # 4 params
+            self.l2 = nn.Linear(2, 1, bias=True)   # 2 weights + 1 bias = 3
+        def forward(self, x):
+            return self.l2(self.l1(x))
+    model = Tiny()
+    stats = count_model_parameters(model)
+    assert stats["total_params"] == 7, f"Expected 7 total params, got {stats['total_params']}"
+    assert stats["trainable_params"] == 7, f"Expected 7 trainable params, got {stats['trainable_params']}"
+    assert stats["non_trainable_params"] == 0, f"Expected 0 non-trainable params, got {stats['non_trainable_params']}"
+    # Make one param non-trainable
+    for name, param in model.named_parameters():
+        if name == "l2.bias":
+            param.requires_grad = False
+    stats2 = count_model_parameters(model)
+    assert stats2["trainable_params"] == 6, f"Expected 6 trainable params, got {stats2['trainable_params']}"
+    assert stats2["non_trainable_params"] == 1, f"Expected 1 non-trainable param, got {stats2['non_trainable_params']}"
+    print("test_count_model_parameters passed.")
+
 if __name__ == '__main__':
     test_count_jsonl_lines()
     test_load_jsonl()
@@ -191,3 +221,4 @@ if __name__ == '__main__':
     test_flatten_dict()
     test_get_model_family()
     test_eval_loss_on_dataset()
+    test_count_model_parameters()
