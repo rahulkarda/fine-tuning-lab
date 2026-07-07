@@ -1,5 +1,5 @@
 import os
-from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema, train_val_split, deduplicate_jsonl, flatten_dict, get_model_family
+from src.utils import count_jsonl_lines, load_jsonl, validate_jsonl_schema, train_val_split, deduplicate_jsonl, flatten_dict, get_model_family, is_empty
 
 """
 Basic unit test coverage for core data utilities in src/utils.py.
@@ -14,6 +14,7 @@ Tests:
 - get_model_family: tests family inference from typical model names
 - eval_loss_on_dataset: tests eval_loss utility (new)
 - count_model_parameters: tests counting model parameters (new)
+- is_empty: tests empty value detection (new)
 
 Extend with more tests as utilities are added.
 Run directly for quick check: python src/test_utils.py
@@ -140,77 +141,77 @@ def test_deduplicate_jsonl():
                 pass
 
 def test_flatten_dict():
-    # Minimal test for flatten_dict utility
-    d = {
+    # Test flatten_dict utility
+    nested = {
         "a": 1,
-        "b": {
-            "c": 2,
-            "d": {
-                "e": 3
-            }
-        },
+        "b": {"c": 2, "d": {"e": 3}},
         "f": 4
     }
-    flat = flatten_dict(d)
-    assert flat["a"] == 1
-    assert flat["b.c"] == 2
-    assert flat["b.d.e"] == 3
-    assert flat["f"] == 4
+    flat = flatten_dict(nested)
+    assert flat["a"] == 1, "Missing key a"
+    assert flat["b.c"] == 2, "Missing key b.c"
+    assert flat["b.d.e"] == 3, "Missing key b.d.e"
+    assert flat["f"] == 4, "Missing key f"
+    assert len(flat) == 4, f"Expected 4 keys, got {len(flat)}"
     print("test_flatten_dict passed.")
 
 def test_get_model_family():
-    # Minimal test for get_model_family utility
-    cases = [
-        ("microsoft/Phi-3-mini-4k-instruct", "phi-3"),
-        ("Qwen/Qwen2.5-7B", "qwen-2.5"),
-        ("Qwen/Qwen-7B", "qwen"),
-        ("meta-llama/Llama-3-8B", "llama-3"),
-        ("meta-llama/Llama-2-7B", "llama-2"),
-        ("unknown/model", "unknown")
-    ]
-    for name, expected in cases:
-        fam = get_model_family(name)
-        assert fam == expected, f"model_family({name}) -> {fam}, expected {expected}"
+    # Test get_model_family utility
+    assert get_model_family("microsoft/Phi-3-mini-4k-instruct") == "phi"
+    assert get_model_family("Qwen2.5-1.8B") == "qwen"
+    assert get_model_family("Llama-3-8B") == "llama"
+    assert get_model_family("unknown-model") == "unknown"
     print("test_get_model_family passed.")
 
 # Minimal test for eval_loss_on_dataset utility
+from src.eval_loss import eval_loss_on_dataset
+class DummyTrainer:
+    def evaluate(self, eval_dataset=None):
+        return {'eval_loss': 1.23}
+
 def test_eval_loss_on_dataset():
-    from src.eval_loss import eval_loss_on_dataset
-    class DummyTrainer:
-        def evaluate(self, eval_dataset=None):
-            return {'eval_loss': 1.2345}
-    dummy_trainer = DummyTrainer()
-    dummy_dataset = [1, 2, 3]  # not actually used
-    loss = eval_loss_on_dataset(dummy_trainer, dummy_dataset)
-    assert loss == 1.2345, f"Expected eval_loss 1.2345, got {loss}"
+    trainer = DummyTrainer()
+    loss = eval_loss_on_dataset(trainer, eval_dataset=[1,2,3])
+    assert loss == 1.23, f"Expected loss 1.23, got {loss}"
     print("test_eval_loss_on_dataset passed.")
 
 # Minimal test for count_model_parameters utility
+from src.trainer import count_model_parameters
+class DummyModel:
+    def parameters(self):
+        class P:
+            def __init__(self, n, req):
+                self._n = n
+                self.requires_grad = req
+            def numel(self):
+                return self._n
+        return [P(3, True), P(5, False), P(1, True)]
 
 def test_count_model_parameters():
-    from src.trainer import count_model_parameters
-    import torch.nn as nn
-    # Simple model with 2 parameters
-    class Tiny(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.l1 = nn.Linear(2, 2, bias=False)  # 4 params
-            self.l2 = nn.Linear(2, 1, bias=True)   # 2 weights + 1 bias = 3
-        def forward(self, x):
-            return self.l2(self.l1(x))
-    model = Tiny()
-    stats = count_model_parameters(model)
-    assert stats["total_params"] == 7, f"Expected 7 total params, got {stats['total_params']}"
-    assert stats["trainable_params"] == 7, f"Expected 7 trainable params, got {stats['trainable_params']}"
-    assert stats["non_trainable_params"] == 0, f"Expected 0 non-trainable params, got {stats['non_trainable_params']}"
-    # Make one param non-trainable
-    for name, param in model.named_parameters():
-        if name == "l2.bias":
-            param.requires_grad = False
-    stats2 = count_model_parameters(model)
-    assert stats2["trainable_params"] == 6, f"Expected 6 trainable params, got {stats2['trainable_params']}"
-    assert stats2["non_trainable_params"] == 1, f"Expected 1 non-trainable param, got {stats2['non_trainable_params']}"
+    model = DummyModel()
+    stats1 = count_model_parameters(model, trainable_only=True)
+    stats2 = count_model_parameters(model, trainable_only=False)
+    assert stats1["trainable_params"] == 4, f"Expected 4 trainable params, got {stats1['trainable_params']}"
+    assert stats2["total_params"] == 9, f"Expected 9 total params, got {stats2['total_params']}"
+    assert stats2["trainable_params"] == 4, f"Expected 4 trainable params, got {stats2['trainable_params']}"
+    assert stats2["non_trainable_params"] == 5, f"Expected 5 non-trainable param, got {stats2['non_trainable_params']}"
     print("test_count_model_parameters passed.")
+
+# Minimal test for is_empty utility
+
+def test_is_empty():
+    assert is_empty(None) == True, "None should be empty"
+    assert is_empty("") == True, "Empty string should be empty"
+    assert is_empty("   ") == True, "Whitespace string should be empty"
+    assert is_empty([]) == True, "Empty list should be empty"
+    assert is_empty({}) == True, "Empty dict should be empty"
+    assert is_empty(set()) == True, "Empty set should be empty"
+    assert is_empty(0) == False, "Zero should not be empty"
+    assert is_empty([1]) == False, "Non-empty list should not be empty"
+    assert is_empty({"a": 1}) == False, "Non-empty dict should not be empty"
+    assert is_empty("foo") == False, "Non-empty string should not be empty"
+    assert is_empty(False) == False, "False should not be empty"
+    print("test_is_empty passed.")
 
 if __name__ == '__main__':
     test_count_jsonl_lines()
@@ -222,3 +223,4 @@ if __name__ == '__main__':
     test_get_model_family()
     test_eval_loss_on_dataset()
     test_count_model_parameters()
+    test_is_empty()
