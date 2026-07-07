@@ -20,7 +20,7 @@
 
 ## Phase 4: experiments
 - [x] Phi-3-mini on instruction data (started)
-- [ ] Qwen-2.5 on a coding-style dataset
+- [x] Qwen-2.5 on a coding-style dataset (started)
 - [ ] LoRA rank sweep on one fixed dataset
 - [ ] Learning rate finder
 
