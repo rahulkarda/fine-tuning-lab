@@ -19,6 +19,7 @@ Includes:
 - dataset_sample_stats: basic stats on a random sample of dataset items (new)
 - deduplicate_texts: remove duplicate text items from a list (new)
 - pad_or_truncate: pad or truncate a sequence to a fixed length (new)
+- is_empty: returns True if value is None, empty, or only whitespace (new)
 
 Usage notes:
 - All utilities are designed for quick experiment scaffolding: call directly or batch in scripts.
@@ -32,6 +33,7 @@ Usage notes:
 - deduplicate_texts is a quick utility for removing duplicate text strings (case-sensitive).
 - normalize_text can be used for robust deduplication and comparison of text samples (lowercase, whitespace, punctuation-stripping).
 - pad_or_truncate is handy for prepping tokenized inputs to a fixed length (for batching, eval, etc).
+- is_empty is a simple helper for filtering or validation of values (None, '', [], etc).
 
 Example:
     # Load and deduplicate dataset
@@ -43,12 +45,15 @@ Example:
     # Pad tokens for batching
     tokens = [101, 102, 103]
     tokens = pad_or_truncate(tokens, length=5)
+    # Filter empty items
+    filtered = [x for x in data if not is_empty(x)]
 
 Caveats:
 - These utilities are not optimized for large-scale datasets (>100k items); use for experiment prototyping.
 - Deduplication is based on object hash; small differences (ordering, whitespace) may defeat it.
 - Text normalization is aggressive; tune for your use-case if needed.
 - train_val_split uses random.shuffle; reproducibility is controlled by seed.
+- is_empty checks for None, '', [], {}, and whitespace-only strings. It does not check for False.
 
 """
 import json
@@ -112,131 +117,109 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Any], bool]) -> int:
             except Exception as e:
                 invalid += 1
                 if not had_error:
-                    print(f"Warning: error parsing line {idx+1} in {path}: {e}. Counting as invalid.")
+                    print(f"Warning: error parsing line {idx+1} of {path}: {e}. Skipping.")
                     had_error = True
     return invalid
 
 
-def deduplicate_jsonl(path: str, output_path: str) -> None:
+def deduplicate_jsonl(input_path: str, output_path: str) -> None:
     """
-    Deduplicates JSONL file based on hash of each object.
-    Blank lines are ignored.
+    Deduplicates JSONL file based on object hash. Writes unique items to output_path.
     """
     seen = set()
-    with open(path, 'r', encoding='utf-8') as f:
-        lines = [line.strip() for line in f if line.strip()]
-    with open(output_path, 'w', encoding='utf-8') as out:
-        for line in lines:
+    deduped = []
+    with open(input_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
             if not line:
                 continue
             try:
                 obj = json.loads(line)
-            except json.JSONDecodeError:
-                # Skip invalid JSON lines silently
+            except Exception:
                 continue
             h = hash(json.dumps(obj, sort_keys=True))
             if h not in seen:
                 seen.add(h)
-                out.write(json.dumps(obj, ensure_ascii=False) + '\n')
+                deduped.append(obj)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        for obj in deduped:
+            f.write(json.dumps(obj, ensure_ascii=False) + '\n')
 
 
 def train_val_split(data: List[Any], val_ratio: float = 0.1, seed: int = 42) -> Tuple[List[Any], List[Any]]:
     """
-    Reproducible train/val split for small datasets.
-    Args:
-        data: input list
-        val_ratio: fraction for validation set
-        seed: random seed
-    Returns:
-        train, val lists
+    Splits data into train and val sets by ratio, shuffling with seed.
+    Returns (train, val).
     """
-    if not data:
-        return [], []
-    idxs = list(range(len(data)))
-    random.seed(seed)
-    random.shuffle(idxs)
-    split_at = int(len(data) * val_ratio)
-    val_idxs = idxs[:split_at]
-    train_idxs = idxs[split_at:]
-    val = [data[i] for i in val_idxs]
+    n = len(data)
+    idxs = list(range(n))
+    random.Random(seed).shuffle(idxs)
+    val_size = int(n * val_ratio)
+    val_idxs = idxs[:val_size]
+    train_idxs = idxs[val_size:]
     train = [data[i] for i in train_idxs]
+    val = [data[i] for i in val_idxs]
     return train, val
 
 
 def get_model_family(model_name: str) -> str:
     """
-    Infers model family (phi, qwen, llama, mistral, etc) from model name string.
-    Returns lowercased family name.
+    Returns major model family from model name string.
     """
-    m = model_name.lower()
-    if 'phi' in m:
+    name = model_name.lower()
+    if 'phi' in name:
         return 'phi'
-    if 'qwen' in m:
+    elif 'qwen' in name:
         return 'qwen'
-    if 'llama' in m:
+    elif 'llama' in name:
         return 'llama'
-    if 'mistral' in m:
+    elif 'mistral' in name:
         return 'mistral'
-    if 'gemma' in m:
+    elif 'gemma' in name:
         return 'gemma'
-    if 'falcon' in m:
+    elif 'falcon' in name:
         return 'falcon'
-    return 'unknown'
+    else:
+        return 'unknown'
 
 
 def dataset_stats(data: List[Any]) -> Dict[str, Any]:
     """
-    Computes quick stats for token length and label balance.
-    Args:
-        data: list of dicts (each item)
-    Returns:
-        dict with stats (token_length, label distribution)
+    Computes token length and label balance stats for dataset.
     """
-    if not data:
-        return {}
     lengths = []
-    labels = {}
+    label_counts = {}
     for item in data:
         if isinstance(item, dict):
             txt = item.get('text', '')
             lengths.append(len(txt.split()))
             label = item.get('label', None)
             if label is not None:
-                labels[label] = labels.get(label, 0) + 1
-    stats = {
+                label_counts[label] = label_counts.get(label, 0) + 1
+    return {
         'count': len(data),
-        'mean_length': float(sum(lengths) / len(lengths)) if lengths else 0.0,
+        'mean_length': float(sum(lengths)/len(lengths)) if lengths else 0.0,
         'min_length': min(lengths) if lengths else 0,
         'max_length': max(lengths) if lengths else 0,
-        'label_dist': labels
+        'label_counts': label_counts
     }
-    return stats
 
 
-def normalize_text(txt: str) -> str:
+def normalize_text(text: str) -> str:
     """
-    Normalizes text for robust comparison: lowercase, remove extra whitespace and punctuation.
-    Args:
-        txt: input string
-    Returns:
-        normalized string
+    Aggressive normalization: lowercase, strip whitespace, remove punctuation.
     """
-    txt = txt.lower()
-    txt = re.sub(r'[\s]+', ' ', txt)
-    txt = re.sub(r'[\p{P}\p{S}]', '', txt)
-    txt = txt.strip()
-    return txt
+    if not isinstance(text, str):
+        return ''
+    text = text.lower().strip()
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'[\p{P}\p{S}]', '', text) if hasattr(re, 'p') else re.sub(r'[^\w\s]', '', text)
+    return text
 
 
-def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
+def flatten_dict(d: dict, parent_key: str = '', sep: str = '.') -> dict:
     """
-    Recursively flattens nested dicts.
-    Args:
-        d: input dict
-        parent_key: for recursive calls
-        sep: separator
-    Returns:
-        flattened dict
+    Flattens nested dict for easier metric aggregation.
     """
     items = {}
     for k, v in d.items():
@@ -250,95 +233,82 @@ def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dic
 
 def is_numeric(val: Any) -> bool:
     """
-    Returns True if value is int or float, not bool.
+    Returns True if value is int or float, but not bool.
     """
     return isinstance(val, (int, float)) and not isinstance(val, bool)
 
 
 def sample_jsonl(path: str, n: int, seed: int = 42) -> List[Any]:
     """
-    Randomly sample N lines from JSONL file.
+    Samples n random lines from JSONL file.
     """
     data = load_jsonl(path)
-    random.seed(seed)
-    random.shuffle(data)
+    random.Random(seed).shuffle(data)
     return data[:n]
 
 
-def get_first_non_empty(lst: List[Any]) -> Optional[Any]:
+def get_first_non_empty(items: List[Any]) -> Optional[Any]:
     """
-    Returns first non-empty item from list, or None.
+    Returns first non-empty item in list (not None, '', [], etc).
     """
-    for item in lst:
-        if item:
-            return item
+    for x in items:
+        if not is_empty(x):
+            return x
     return None
 
 
-def get_last_non_empty(lst: List[Any]) -> Optional[Any]:
+def get_last_non_empty(items: List[Any]) -> Optional[Any]:
     """
-    Returns last non-empty item from list, or None.
+    Returns last non-empty item in list.
     """
-    for item in reversed(lst):
-        if item:
-            return item
+    for x in reversed(items):
+        if not is_empty(x):
+            return x
     return None
 
 
-def get_non_empty(lst: List[Any]) -> List[Any]:
+def get_non_empty(items: List[Any]) -> List[Any]:
     """
-    Returns all non-empty items from list.
+    Returns list of all non-empty items.
     """
-    return [item for item in lst if item]
+    return [x for x in items if not is_empty(x)]
 
 
-def dataset_sample_stats(data: List[Any], n: int = 10, seed: int = 42) -> Dict[str, Any]:
+def dataset_sample_stats(data: List[Any], n: int = 20, seed: int = 42) -> Dict[str, Any]:
     """
-    Basic stats on a random sample of dataset items.
-    Args:
-        data: list of dicts
-        n: sample size
-        seed: random seed
-    Returns:
-        dict with sample keys, lengths, label balance
+    Computes stats on a random sample from dataset.
     """
     if not data:
         return {}
-    random.seed(seed)
-    sample = random.sample(data, min(n, len(data)))
+    random.Random(seed).shuffle(data)
+    sample = data[:n]
     keys = set()
     lengths = []
-    labels = {}
     for item in sample:
         if isinstance(item, dict):
             keys.update(item.keys())
             txt = item.get('text', '')
             lengths.append(len(txt.split()))
-            label = item.get('label', None)
-            if label is not None:
-                labels[label] = labels.get(label, 0) + 1
-    stats = {
+    return {
         'sample_size': len(sample),
-        'keys': sorted(list(keys)),
-        'mean_length': float(sum(lengths) / len(lengths)) if lengths else 0.0,
+        'mean_length': float(sum(lengths)/len(lengths)) if lengths else 0.0,
         'min_length': min(lengths) if lengths else 0,
         'max_length': max(lengths) if lengths else 0,
-        'label_dist': labels
+        'keys': list(keys)
     }
-    return stats
 
 
 def deduplicate_texts(texts: List[str]) -> List[str]:
     """
-    Removes duplicate text strings from list. Case-sensitive.
+    Removes duplicate text strings from a list. Case-sensitive.
     """
     seen = set()
-    output = []
+    deduped = []
     for t in texts:
         if t not in seen:
             seen.add(t)
-            output.append(t)
-    return output
+            deduped.append(t)
+    return deduped
 
 
 def pad_or_truncate(seq: List[Any], length: int, pad_value: Any = 0) -> List[Any]:
@@ -357,3 +327,17 @@ def pad_or_truncate(seq: List[Any], length: int, pad_value: Any = 0) -> List[Any
         return seq + [pad_value] * (length - len(seq))
     else:
         return seq
+
+
+def is_empty(val: Any) -> bool:
+    """
+    Returns True if value is None, empty string, empty list/dict, or only whitespace.
+    False for numbers, True/False, non-empty containers.
+    """
+    if val is None:
+        return True
+    if isinstance(val, str):
+        return val.strip() == ''
+    if isinstance(val, (list, dict, set, tuple)):
+        return len(val) == 0
+    return False
