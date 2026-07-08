@@ -31,6 +31,7 @@ def _is_numeric(val: Any) -> bool:
     """
     return isinstance(val, (int, float)) and not isinstance(val, bool)
 
+
 def aggregate_metrics(
     results: List[Dict[str, Any]],
     metric_keys: Optional[List[str]] = None
@@ -52,9 +53,12 @@ def aggregate_metrics(
     for res in results:
         all_keys.update(res.keys())
     # Determine which keys to aggregate
-    keys = metric_keys if metric_keys is not None else [k for k in all_keys if k not in exclude_keys]
+    if metric_keys is not None:
+        keys_to_aggregate = metric_keys
+    else:
+        keys_to_aggregate = [k for k in all_keys if k not in exclude_keys]
     dashboard = {}
-    for key in keys:
+    for key in keys_to_aggregate:
         values = []
         for res in results:
             v = res.get(key, None)
@@ -66,15 +70,16 @@ def aggregate_metrics(
             elif _is_numeric(v):
                 values.append(v)
             # skip non-numeric types
-        if values:
-            arr = np.array(values, dtype=np.float32)
-            dashboard[key] = {
-                'mean': float(np.mean(arr)),
-                'std': float(np.std(arr)),
-                'min': float(np.min(arr)),
-                'max': float(np.max(arr)),
-                'count': int(len(arr))
-            }
+        if not values:
+            continue
+        arr = np.array(values, dtype=np.float32)
+        dashboard[key] = {
+            'mean': float(np.mean(arr)),
+            'std': float(np.std(arr)),
+            'min': float(np.min(arr)),
+            'max': float(np.max(arr)),
+            'count': int(len(arr))
+        }
     return dashboard
 
 
