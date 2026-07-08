@@ -20,6 +20,7 @@ Includes:
 - deduplicate_texts: remove duplicate text items from a list (new)
 - pad_or_truncate: pad or truncate a sequence to a fixed length (new)
 - is_empty: returns True if value is None, empty, or only whitespace (new)
+- dataset_token_counts: computes token counts for each item in a dataset (new)
 
 Usage notes:
 - All utilities are designed for quick experiment scaffolding: call directly or batch in scripts.
@@ -34,6 +35,7 @@ Usage notes:
 - normalize_text can be used for robust deduplication and comparison of text samples (lowercase, whitespace, punctuation-stripping).
 - pad_or_truncate is handy for prepping tokenized inputs to a fixed length (for batching, eval, etc).
 - is_empty is a simple helper for filtering or validation of values (None, '', [], etc).
+- dataset_token_counts helps analyze tokenization stats for batching and memory planning (new).
 
 Example:
     # Load and deduplicate dataset
@@ -47,6 +49,11 @@ Example:
     tokens = pad_or_truncate(tokens, length=5)
     # Filter empty items
     filtered = [x for x in data if not is_empty(x)]
+    # Compute token counts per item
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained('microsoft/Phi-3-mini-4k-instruct')
+    counts = dataset_token_counts(data, tokenizer)
+    print(counts)
 
 Caveats:
 - These utilities are not optimized for large-scale datasets (>100k items); use for experiment prototyping.
@@ -54,6 +61,7 @@ Caveats:
 - Text normalization is aggressive; tune for your use-case if needed.
 - train_val_split uses random.shuffle; reproducibility is controlled by seed.
 - is_empty checks for None, '', [], {}, and whitespace-only strings. It does not check for False.
+- dataset_token_counts assumes you provide a compatible tokenizer and optionally the text field name.
 
 """
 import json
@@ -114,46 +122,46 @@ def validate_jsonl_schema(path: str, schema_fn: Callable[[Any], bool]) -> int:
                 obj = json.loads(line)
                 if not schema_fn(obj):
                     invalid += 1
-            except Exception as e:
-                invalid += 1
+            except Exception:
                 if not had_error:
-                    print(f"Warning: error parsing line {idx+1} of {path}: {e}. Skipping.")
+                    print(f"Warning: error parsing line {idx+1} in {path}. Skipping.")
                     had_error = True
+                invalid += 1
     return invalid
 
 
-def deduplicate_jsonl(input_path: str, output_path: str) -> None:
+def deduplicate_jsonl(path_in: str, path_out: str) -> None:
     """
-    Deduplicates JSONL file based on object hash. Writes unique items to output_path.
+    Deduplicates JSONL file (by object hash), writes unique items to path_out.
     """
     seen = set()
-    deduped = []
-    with open(input_path, 'r', encoding='utf-8') as f:
+    unique = []
+    with open(path_in, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             try:
                 obj = json.loads(line)
+                h = hash(json.dumps(obj, sort_keys=True))
+                if h not in seen:
+                    seen.add(h)
+                    unique.append(obj)
             except Exception:
                 continue
-            h = hash(json.dumps(obj, sort_keys=True))
-            if h not in seen:
-                seen.add(h)
-                deduped.append(obj)
-    with open(output_path, 'w', encoding='utf-8') as f:
-        for obj in deduped:
+    with open(path_out, 'w', encoding='utf-8') as f:
+        for obj in unique:
             f.write(json.dumps(obj, ensure_ascii=False) + '\n')
 
 
 def train_val_split(data: List[Any], val_ratio: float = 0.1, seed: int = 42) -> Tuple[List[Any], List[Any]]:
     """
-    Splits data into train and val sets by ratio, shuffling with seed.
-    Returns (train, val).
+    Splits data into train/val sets by ratio. Shuffle with seed.
     """
     n = len(data)
     idxs = list(range(n))
-    random.Random(seed).shuffle(idxs)
+    random.seed(seed)
+    random.shuffle(idxs)
     val_size = int(n * val_ratio)
     val_idxs = idxs[:val_size]
     train_idxs = idxs[val_size:]
@@ -162,64 +170,9 @@ def train_val_split(data: List[Any], val_ratio: float = 0.1, seed: int = 42) -> 
     return train, val
 
 
-def get_model_family(model_name: str) -> str:
-    """
-    Returns major model family from model name string.
-    """
-    name = model_name.lower()
-    if 'phi' in name:
-        return 'phi'
-    elif 'qwen' in name:
-        return 'qwen'
-    elif 'llama' in name:
-        return 'llama'
-    elif 'mistral' in name:
-        return 'mistral'
-    elif 'gemma' in name:
-        return 'gemma'
-    elif 'falcon' in name:
-        return 'falcon'
-    else:
-        return 'unknown'
-
-
-def dataset_stats(data: List[Any]) -> Dict[str, Any]:
-    """
-    Computes token length and label balance stats for dataset.
-    """
-    lengths = []
-    label_counts = {}
-    for item in data:
-        if isinstance(item, dict):
-            txt = item.get('text', '')
-            lengths.append(len(txt.split()))
-            label = item.get('label', None)
-            if label is not None:
-                label_counts[label] = label_counts.get(label, 0) + 1
-    return {
-        'count': len(data),
-        'mean_length': float(sum(lengths)/len(lengths)) if lengths else 0.0,
-        'min_length': min(lengths) if lengths else 0,
-        'max_length': max(lengths) if lengths else 0,
-        'label_counts': label_counts
-    }
-
-
-def normalize_text(text: str) -> str:
-    """
-    Aggressive normalization: lowercase, strip whitespace, remove punctuation.
-    """
-    if not isinstance(text, str):
-        return ''
-    text = text.lower().strip()
-    text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'[\p{P}\p{S}]', '', text) if hasattr(re, 'p') else re.sub(r'[^\w\s]', '', text)
-    return text
-
-
 def flatten_dict(d: dict, parent_key: str = '', sep: str = '.') -> dict:
     """
-    Flattens nested dict for easier metric aggregation.
+    Recursively flattens nested dicts. Keys are joined by sep.
     """
     items = {}
     for k, v in d.items():
@@ -231,95 +184,146 @@ def flatten_dict(d: dict, parent_key: str = '', sep: str = '.') -> dict:
     return items
 
 
+def get_model_family(model_name: str) -> str:
+    """
+    Infer model family from model name string.
+    """
+    s = model_name.lower()
+    if 'phi' in s:
+        return 'phi'
+    if 'qwen' in s:
+        return 'qwen'
+    if 'llama' in s or 'lama' in s:
+        return 'llama'
+    if 'mistral' in s:
+        return 'mistral'
+    if 'falcon' in s:
+        return 'falcon'
+    if 'gemma' in s:
+        return 'gemma'
+    return 'other'
+
+
+def dataset_stats(data: List[Any], text_key: str = 'text', label_key: Optional[str] = None) -> dict:
+    """
+    Computes basic stats for dataset: token lengths, label balance.
+    """
+    lengths = []
+    labels = []
+    for item in data:
+        txt = item.get(text_key, '') if isinstance(item, dict) else str(item)
+        lengths.append(len(txt))
+        if label_key and label_key in item:
+            labels.append(item[label_key])
+    stats = {
+        'count': len(data),
+        'mean_length': float(sum(lengths) / len(lengths)) if lengths else 0,
+        'min_length': min(lengths) if lengths else 0,
+        'max_length': max(lengths) if lengths else 0,
+        'label_balance': {}
+    }
+    if labels:
+        from collections import Counter
+        stats['label_balance'] = dict(Counter(labels))
+    return stats
+
+
+def normalize_text(text: str) -> str:
+    """
+    Aggressive text normalization: lowercase, strip whitespace, remove punctuation.
+    """
+    text = text.strip().lower()
+    text = re.sub(r'[\s]+', ' ', text)
+    text = re.sub(r'[\p{P}\p{S}]', '', text) if hasattr(re, 'UNICODE') else re.sub(r'[!"#$%&\'()*+,\-./:;<=>?@[\\]^_`{|}~]', '', text)
+    return text
+
+
 def is_numeric(val: Any) -> bool:
     """
-    Returns True if value is int or float, but not bool.
+    Returns True if val is int or float, but not bool.
     """
     return isinstance(val, (int, float)) and not isinstance(val, bool)
 
 
 def sample_jsonl(path: str, n: int, seed: int = 42) -> List[Any]:
     """
-    Samples n random lines from JSONL file.
+    Randomly samples n items from JSONL file.
     """
     data = load_jsonl(path)
-    random.Random(seed).shuffle(data)
-    return data[:n]
+    random.seed(seed)
+    if n >= len(data):
+        return data
+    idxs = random.sample(range(len(data)), n)
+    return [data[i] for i in idxs]
 
 
-def get_first_non_empty(items: List[Any]) -> Optional[Any]:
+def get_first_non_empty(items: List[Any]) -> Any:
     """
-    Returns first non-empty item in list (not None, '', [], etc).
+    Returns first non-empty item from list, or None.
     """
-    for x in items:
-        if not is_empty(x):
-            return x
+    for item in items:
+        if not is_empty(item):
+            return item
     return None
 
 
-def get_last_non_empty(items: List[Any]) -> Optional[Any]:
+def get_last_non_empty(items: List[Any]) -> Any:
     """
-    Returns last non-empty item in list.
+    Returns last non-empty item from list, or None.
     """
-    for x in reversed(items):
-        if not is_empty(x):
-            return x
+    for item in reversed(items):
+        if not is_empty(item):
+            return item
     return None
 
 
 def get_non_empty(items: List[Any]) -> List[Any]:
     """
-    Returns list of all non-empty items.
+    Returns all non-empty items from list.
     """
-    return [x for x in items if not is_empty(x)]
+    return [item for item in items if not is_empty(item)]
 
 
-def dataset_sample_stats(data: List[Any], n: int = 20, seed: int = 42) -> Dict[str, Any]:
+def dataset_sample_stats(data: List[Any], sample_size: int = 20, text_key: str = 'text', seed: int = 42) -> dict:
     """
-    Computes stats on a random sample from dataset.
+    Computes stats on a random sample of dataset items.
     """
-    if not data:
-        return {}
-    random.Random(seed).shuffle(data)
-    sample = data[:n]
+    random.seed(seed)
+    sample = random.sample(data, min(sample_size, len(data)))
     keys = set()
     lengths = []
     for item in sample:
         if isinstance(item, dict):
             keys.update(item.keys())
-            txt = item.get('text', '')
-            lengths.append(len(txt.split()))
+            txt = item.get(text_key, '')
+        else:
+            txt = str(item)
+        lengths.append(len(txt))
     return {
         'sample_size': len(sample),
-        'mean_length': float(sum(lengths)/len(lengths)) if lengths else 0.0,
+        'mean_length': float(sum(lengths)/len(lengths)) if lengths else 0,
         'min_length': min(lengths) if lengths else 0,
         'max_length': max(lengths) if lengths else 0,
-        'keys': list(keys)
+        'keys': sorted(keys),
     }
 
 
 def deduplicate_texts(texts: List[str]) -> List[str]:
     """
-    Removes duplicate text strings from a list. Case-sensitive.
+    Removes duplicate strings (case-sensitive).
     """
     seen = set()
-    deduped = []
+    unique = []
     for t in texts:
         if t not in seen:
             seen.add(t)
-            deduped.append(t)
-    return deduped
+            unique.append(t)
+    return unique
 
 
 def pad_or_truncate(seq: List[Any], length: int, pad_value: Any = 0) -> List[Any]:
     """
-    Pads or truncates a sequence to a fixed length.
-    Args:
-        seq: input sequence (list)
-        length: target length
-        pad_value: value to pad with (default 0)
-    Returns:
-        list of length 'length'
+    Pads or truncates sequence to fixed length.
     """
     if len(seq) > length:
         return seq[:length]
@@ -341,3 +345,30 @@ def is_empty(val: Any) -> bool:
     if isinstance(val, (list, dict, set, tuple)):
         return len(val) == 0
     return False
+
+
+def dataset_token_counts(
+    data: List[Any],
+    tokenizer,
+    text_key: str = 'text',
+    add_special_tokens: bool = True
+) -> List[int]:
+    """
+    Computes token counts for each item in a dataset using the provided tokenizer.
+    Args:
+        data: list of items (dicts, each with text_key or string)
+        tokenizer: HuggingFace tokenizer instance
+        text_key: key to extract text from dict (default: 'text')
+        add_special_tokens: whether to add special tokens when encoding
+    Returns:
+        List of token counts for each item
+    """
+    counts = []
+    for item in data:
+        if isinstance(item, dict):
+            txt = item.get(text_key, '')
+        else:
+            txt = str(item)
+        tokens = tokenizer.encode(txt, add_special_tokens=add_special_tokens)
+        counts.append(len(tokens))
+    return counts
