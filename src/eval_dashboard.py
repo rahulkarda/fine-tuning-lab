@@ -94,9 +94,17 @@ def print_dashboard(dashboard: Dict[str, Any]) -> None:
         return
     print("Aggregate Metrics Dashboard:")
     for key, stats in dashboard.items():
-        mean = stats.get('mean', float('nan'))
-        std = stats.get('std', float('nan'))
-        minv = stats.get('min', float('nan'))
-        maxv = stats.get('max', float('nan'))
+        # Use .get for each stat and handle nan/missing gracefully
+        mean = stats.get('mean')
+        std = stats.get('std')
+        minv = stats.get('min')
+        maxv = stats.get('max')
         count = stats.get('count', 0)
-        print(f"- {key}: mean={mean:.4f}, std={std:.4f}, min={minv:.4f}, max={maxv:.4f}, count={count}")
+        def fmt(val):
+            if val is None:
+                return "-"
+            try:
+                return f"{val:.4f}"
+            except Exception:
+                return str(val)
+        print(f"- {key}: mean={fmt(mean)}, std={fmt(std)}, min={fmt(minv)}, max={fmt(maxv)}, count={count}")
