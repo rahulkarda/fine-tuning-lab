@@ -40,7 +40,7 @@ def aggregate_metrics(
     Aggregates numeric metrics from a list of result dicts.
     Args:
         results: list of dicts, each with metrics (e.g. from eval_generation_quality, eval_loss)
-        metric_keys: which metrics to aggregate (default: all keys except string fields and outputs/prompts)
+        metric_keys: which metrics to aggregate (default: all numeric keys except outputs/prompts/diff)
     Returns:
         dict with mean, std, min, max, count per metric
     """
@@ -52,11 +52,29 @@ def aggregate_metrics(
     all_keys = set()
     for res in results:
         all_keys.update(res.keys())
-    # Determine which keys to aggregate
+    
+    # Determine which keys to aggregate: only those that are numeric in at least one result
     if metric_keys is not None:
         keys_to_aggregate = metric_keys
     else:
-        keys_to_aggregate = [k for k in all_keys if k not in exclude_keys]
+        candidate_keys = [k for k in all_keys if k not in exclude_keys]
+        keys_to_aggregate = []
+        for k in candidate_keys:
+            for res in results:
+                v = res.get(k, None)
+                if v is None:
+                    continue
+                if isinstance(v, list):
+                    if any(_is_numeric(x) for x in v):
+                        keys_to_aggregate.append(k)
+                        break
+                elif _is_numeric(v):
+                    keys_to_aggregate.append(k)
+                    break
+        # Remove duplicates while preserving order
+        seen = set()
+        keys_to_aggregate = [k for k in keys_to_aggregate if not (k in seen or seen.add(k))]
+
     dashboard = {}
     for key in keys_to_aggregate:
         values = []
