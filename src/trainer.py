@@ -9,6 +9,17 @@ This module provides:
 - Support for resuming from checkpoint and memory-efficient training
 - Utility: count_model_parameters(model, trainable_only=False) for parameter statistics (new)
 
+LoRA integration:
+- If cfg.use_lora is True, model is wrapped with LoRA using peft (must be installed).
+- lora_r, lora_alpha, lora_dropout, lora_target_modules are all configurable from TrainConfig.
+- For new model families, check target_modules carefully (often 'q_proj', 'v_proj' for attention).
+
+Config tips:
+- All training hyperparameters are controlled via TrainConfig dataclass (src/config.py).
+- Resume-from-checkpoint is handled automatically via cfg.resume_from.
+- Gradient checkpointing can be toggled via cfg.gradient_checkpointing for memory efficiency.
+- For quick runs, set batch_size and grad_accum_steps to fit your GPU.
+
 Usage Example:
     from src.config import TrainConfig
     from src.trainer import MinimalTrainer, count_model_parameters
@@ -21,6 +32,12 @@ Usage Example:
 
 MinimalTrainer handles model setup, Trainer instantiation, and training loop.
 Extend this module for custom callbacks, evaluation, or logging as needed.
+
+Caveats:
+- LoRA requires peft; install with pip if missing.
+- Resume-from-checkpoint expects compatible checkpoint in cfg.output_dir.
+- Memory settings (fp16, gradient_checkpointing) may need adjustment per model/GPU.
+- count_model_parameters is useful for reporting trainable parameter count (especially with LoRA).
 
 Intended for quick experiment scaffolding.
 """
