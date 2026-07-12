@@ -88,6 +88,8 @@ def aggregate_metrics(
             elif _is_numeric(v):
                 values.append(v)
             # skip non-numeric types
+        # Filter out nan values explicitly
+        values = [x for x in values if not (isinstance(x, float) and np.isnan(x))]
         if not values:
             continue
         arr = np.array(values, dtype=np.float32)
