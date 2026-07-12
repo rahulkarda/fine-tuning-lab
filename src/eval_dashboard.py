@@ -109,7 +109,7 @@ def print_dashboard(dashboard: Dict[str, Any]) -> None:
     Args:
         dashboard: dict from aggregate_metrics
     """
-    if not dashboard:
+    if not dashboard or not isinstance(dashboard, dict) or len(dashboard) == 0:
         print("No metrics to display.")
         return
     print("Aggregate Metrics Dashboard:")
