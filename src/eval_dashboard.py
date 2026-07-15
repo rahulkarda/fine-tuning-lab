@@ -18,11 +18,17 @@ Usage Example:
     dashboard = aggregate_metrics(results)
     print_dashboard(dashboard)
 
-Notes:
-- Only numeric values (int, float, not bool) are aggregated.
-- Non-metrics keys (outputs, prompts, diffs) are excluded by default.
-- Robust to missing keys: skipped if not present.
-- Designed for quick experiment reporting, not full-featured logging.
+Dashboard usage notes:
+- aggregate_metrics processes a list of dicts, each with evaluation results (e.g. loss, generation metrics, etc).
+- Only numeric values (int, float; not bool) are aggregated. Non-numeric fields (outputs, prompts, diffs) are skipped.
+- Handles missing keys and mixed result schemas robustly: only keys present and numeric in at least one result are aggregated.
+- print_dashboard pretty-prints aggregate metrics, handling nan and missing values gracefully.
+- Designed for quick experiment reporting, not full-featured logging or visualization.
+- Pass metric_keys to aggregate_metrics to restrict aggregation to specific metrics, or leave None for auto-selection.
+- Exclude keys like 'outputs', 'prompts', 'base_output', 'tuned_output', and 'diff' by default.
+- NaN values are filtered out before aggregation.
+- Use in eval phase to compare before/after fine-tuning, sweep results, etc.
+
 """
 
 def _is_numeric(val: Any) -> bool:
@@ -128,3 +134,4 @@ def print_dashboard(dashboard: Dict[str, Any]) -> None:
             except Exception:
                 return str(val)
         print(f"- {key}: mean={fmt(mean)}, std={fmt(std)}, min={fmt(minv)}, max={fmt(maxv)}, count={count}")
+
