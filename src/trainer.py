@@ -131,36 +131,44 @@ class MinimalTrainer:
     Usage:
         trainer = MinimalTrainer(cfg, train_dataset, tokenizer)
         trainer.train()
+
+    Extend for custom callbacks or logging.
     """
     def __init__(self, cfg: TrainConfig, train_dataset, tokenizer):
         self.cfg = cfg
         self.model, self.tokenizer = setup_model_and_tokenizer(cfg)
+        self.train_dataset = train_dataset
         self.args = get_training_args(cfg)
         self.trainer = Trainer(
             model=self.model,
             args=self.args,
-            train_dataset=train_dataset,
-            tokenizer=tokenizer
+            train_dataset=self.train_dataset,
+            tokenizer=self.tokenizer
         )
 
     def train(self):
+        return self.trainer.train()
+
+    def save_model(self):
+        self.trainer.save_model()
+
+    def model_stats(self, trainable_only: bool = False):
         """
-        Runs training loop. Handles checkpoint resume if configured.
+        Returns parameter statistics for the model.
+        Args:
+            trainable_only: if True, returns only trainable param count.
         Returns:
-            Trainer output (training state)
+            dict with counts
         """
-        if self.cfg.resume_from:
-            return self.trainer.train(resume_from_checkpoint=self.cfg.resume_from)
-        else:
-            return self.trainer.train()
+        return count_model_parameters(self.model, trainable_only=trainable_only)
 
 
-def count_model_parameters(model, trainable_only: bool = False) -> dict:
+def count_model_parameters(model, trainable_only: bool = False):
     """
-    Counts parameters in a model. Optionally restricts to trainable parameters (requires_grad).
+    Returns parameter statistics for a model.
     Args:
-        model: PyTorch model (HF or peft-wrapped)
-        trainable_only: if True, counts only parameters where requires_grad is True
+        model: torch.nn.Module
+        trainable_only: if True, only include trainable params
     Returns:
         dict with total_params, trainable_params, non_trainable_params
     """
