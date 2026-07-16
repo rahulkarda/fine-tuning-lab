@@ -25,6 +25,7 @@ Includes:
 - dataset_label_counts: computes label distribution for quick stats (new)
 - get_first_key: returns the first key from a dict, or None if empty (new)
 - get_last_key: returns the last key from a dict, or None if empty (new)
+- get_keys: returns a list of keys from a dict, or empty list if not a dict (new)
 
 Usage notes:
 - All utilities are designed for quick experiment scaffolding: call directly or batch in scripts.
@@ -44,6 +45,7 @@ Usage notes:
 - dataset_label_counts computes label distribution statistics for classification tasks (new).
 - get_first_key returns the first key from a dict, useful for quick schema inspection (new).
 - get_last_key returns the last key from a dict, useful for quick schema inspection (new).
+- get_keys returns a list of keys from a dict, useful for schema inspection or iterating fields (new).
 
 Example:
     # Load and deduplicate dataset
@@ -74,6 +76,9 @@ Example:
     # Get last key from schema dict
     last_key = get_last_key(data[0])
     print(last_key)
+    # Get all keys from schema dict
+    keys = get_keys(data[0])
+    print(keys)
 
 Caveats:
 - These utilities are not optimized for large-scale datasets (>100k items); use for experiment prototyping.
@@ -83,14 +88,15 @@ Caveats:
 - is_empty checks for None, '', [], {}, and whitespace-only strings. It does not check for False.
 - dataset_token_counts assumes you provide a compatible tokenizer and optionally the text field name.
 - dataset_text_lengths computes character length using len(str(text)).
-- dataset_label_counts assumes a 'label' field is present in each item (can override label_key).
-- get_first_key returns None if dict is empty or not a dict.
-- get_last_key returns None if dict is empty or not a dict.
+- dataset_label_counts computes label distribution statistics for classification tasks.
+- get_first_key returns the first key from a dict, useful for quick schema inspection.
+- get_last_key returns the last key from a dict, useful for quick schema inspection.
+- get_keys returns a list of keys from a dict, useful for schema inspection or iterating fields.
 """
 import json
 import random
-from typing import List, Any, Callable, Optional, Tuple, Dict
-import re
+from typing import Any, Callable, List, Optional, Dict, Tuple, Union
+import string
 
 
 def count_jsonl_lines(path: str) -> int:
@@ -104,162 +110,269 @@ def count_jsonl_lines(path: str) -> int:
                 count += 1
     return count
 
+
 def load_jsonl(path: str) -> List[Any]:
     """
-    Loads a JSONL file into a list of objects, skipping blank lines.
+    Loads JSON objects from JSONL file, skipping blank lines.
     """
     items = []
     with open(path, 'r', encoding='utf-8') as f:
         for line in f:
-            if line.strip():
-                try:
-                    item = json.loads(line)
-                    items.append(item)
-                except Exception:
-                    continue
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                items.append(obj)
+            except Exception:
+                pass
     return items
+
 
 def validate_jsonl_schema(path: str, schema_fn: Callable[[Any], bool]) -> int:
     """
-    Validates JSONL objects against schema_fn. Returns number of invalid lines.
+    Validates each line against schema_fn. Returns count of invalid lines.
     """
     invalid = 0
     with open(path, 'r', encoding='utf-8') as f:
         for line in f:
-            if not line.strip():
+            line = line.strip()
+            if not line:
                 continue
             try:
                 obj = json.loads(line)
+                if not schema_fn(obj):
+                    invalid += 1
             except Exception:
-                invalid += 1
-                continue
-            if not schema_fn(obj):
                 invalid += 1
     return invalid
 
+
 def deduplicate_jsonl(input_path: str, output_path: str) -> None:
     """
-    Deduplicates JSONL objects by hash and writes to output_path.
+    Removes duplicate JSONL objects based on hash.
     """
     seen = set()
-    with open(input_path, 'r', encoding='utf-8') as fin, open(output_path, 'w', encoding='utf-8') as fout:
-        for line in fin:
-            if not line.strip():
+    out_items = []
+    with open(input_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
                 continue
             try:
                 obj = json.loads(line)
+                h = hash(json.dumps(obj, sort_keys=True))
+                if h not in seen:
+                    seen.add(h)
+                    out_items.append(obj)
             except Exception:
-                continue
-            h = json.dumps(obj, sort_keys=True)
-            if h not in seen:
-                seen.add(h)
-                fout.write(json.dumps(obj, ensure_ascii=False) + '\n')
+                pass
+    with open(output_path, 'w', encoding='utf-8') as f:
+        for item in out_items:
+            f.write(json.dumps(item, ensure_ascii=False) + '\n')
+
 
 def train_val_split(data: List[Any], val_ratio: float = 0.1, seed: int = 42) -> Tuple[List[Any], List[Any]]:
     """
     Reproducible train/val split by ratio and seed.
     """
-    n = len(data)
-    idx = list(range(n))
-    random.seed(seed)
-    random.shuffle(idx)
-    val_size = max(1, int(n * val_ratio))
+    rng = random.Random(seed)
+    idx = list(range(len(data)))
+    rng.shuffle(idx)
+    val_size = int(round(len(data) * val_ratio))
     val_idx = idx[:val_size]
     train_idx = idx[val_size:]
     train = [data[i] for i in train_idx]
     val = [data[i] for i in val_idx]
     return train, val
 
-def flatten_dict(d: Any, parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
-    """
-    Recursively flattens a nested dict.
-    """
-    items = {}
-    if isinstance(d, dict):
-        for k, v in d.items():
-            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-            if isinstance(v, dict):
-                items.update(flatten_dict(v, new_key, sep=sep))
-            else:
-                items[new_key] = v
-    else:
-        items[parent_key] = d
-    return items
 
 def get_model_family(model_name: str) -> str:
     """
     Infers major model family from model name string.
     """
     name = model_name.lower()
-    if 'phi' in name:
-        return 'phi'
-    if 'qwen' in name:
-        return 'qwen'
-    if 'llama' in name:
-        return 'llama'
-    if 'mistral' in name:
-        return 'mistral'
-    if 'gemma' in name:
-        return 'gemma'
-    return 'unknown'
+    if "phi" in name:
+        return "phi"
+    if "qwen" in name:
+        return "qwen"
+    if "llama" in name or "meta-llama" in name or "llama3" in name or "llama-3" in name:
+        return "llama"
+    return "other"
+
+
+def flatten_dict(d: Any, parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
+    """
+    Recursively flattens nested dicts for easier metric aggregation.
+    """
+    items = {}
+    if not isinstance(d, dict):
+        return items
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.update(flatten_dict(v, new_key, sep=sep))
+        else:
+            items[new_key] = v
+    return items
+
+
+def is_numeric(val: Any) -> bool:
+    """
+    Checks if value is a numeric type (int/float, not bool).
+    """
+    return isinstance(val, (int, float)) and not isinstance(val, bool)
+
+
+def sample_jsonl(path: str, n: int, seed: int = 42) -> List[Any]:
+    """
+    Randomly sample N lines from JSONL file.
+    """
+    data = load_jsonl(path)
+    rng = random.Random(seed)
+    rng.shuffle(data)
+    return data[:n]
+
+
+def get_first_non_empty(lst: List[Any]) -> Optional[Any]:
+    """
+    Returns the first non-empty item from a list.
+    """
+    for item in lst:
+        if not is_empty(item):
+            return item
+    return None
+
+
+def get_last_non_empty(lst: List[Any]) -> Optional[Any]:
+    """
+    Returns the last non-empty item from a list.
+    """
+    for item in reversed(lst):
+        if not is_empty(item):
+            return item
+    return None
+
+
+def get_non_empty(lst: List[Any]) -> List[Any]:
+    """
+    Returns all non-empty items from a list.
+    """
+    return [x for x in lst if not is_empty(x)]
+
+
+def dataset_sample_stats(data: List[Any], n: int = 10, seed: int = 42) -> Dict[str, Any]:
+    """
+    Basic stats on a random sample of dataset items.
+    """
+    sample = data.copy()
+    random.Random(seed).shuffle(sample)
+    sample = sample[:n]
+    keys = set()
+    lengths = []
+    for item in sample:
+        if isinstance(item, dict):
+            keys.update(item.keys())
+        lengths.append(len(str(item)))
+    return {
+        "num_sample": len(sample),
+        "keys": sorted(list(keys)),
+        "avg_length": sum(lengths) / len(lengths) if lengths else 0,
+    }
+
+
+def deduplicate_texts(texts: List[str]) -> List[str]:
+    """
+    Removes duplicate text items from a list (case-sensitive).
+    """
+    seen = set()
+    out = []
+    for t in texts:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def normalize_text(text: str) -> str:
+    """
+    Text normalization: lowercase, strip, remove punctuation.
+    """
+    t = text.lower().strip()
+    t = t.translate(str.maketrans('', '', string.punctuation))
+    t = ' '.join(t.split())
+    return t
+
+
+def pad_or_truncate(seq: List[Any], length: int, pad_val: Any = 0) -> List[Any]:
+    """
+    Pad or truncate a sequence to a fixed length.
+    """
+    if len(seq) < length:
+        return seq + [pad_val] * (length - len(seq))
+    else:
+        return seq[:length]
+
 
 def is_empty(val: Any) -> bool:
     """
-    Returns True if val is None, empty, or only whitespace.
+    Returns True if value is None, empty, or only whitespace.
     """
     if val is None:
         return True
-    if isinstance(val, str):
-        return val.strip() == ''
-    if isinstance(val, (list, dict)):
+    if isinstance(val, (str, bytes)):
+        return not val.strip()
+    if isinstance(val, (list, dict, set)):
         return len(val) == 0
     return False
 
-def dataset_text_lengths(data: List[Any], text_key: str = 'text') -> List[int]:
-    """
-    Computes text length (number of characters) for each item.
-    """
-    lengths = []
-    for item in data:
-        if isinstance(item, dict):
-            text = item.get(text_key, '')
-        elif isinstance(item, str):
-            text = item
-        else:
-            text = str(item)
-        lengths.append(len(str(text)))
-    return lengths
 
-def dataset_token_counts(data: List[Any], tokenizer: Any, text_key: str = 'text') -> List[int]:
+def dataset_token_counts(data: List[Any], tokenizer: Any, text_field: str = "text") -> List[int]:
     """
-    Computes token counts for each item using provided tokenizer.
+    Computes token counts for each item in a dataset.
     """
     counts = []
     for item in data:
-        if isinstance(item, dict):
-            text = item.get(text_key, '')
-        elif isinstance(item, str):
-            text = item
+        if isinstance(item, dict) and text_field in item:
+            text = item[text_field]
         else:
             text = str(item)
-        tokens = tokenizer.encode(text)
-        counts.append(len(tokens))
+        try:
+            tokens = tokenizer.encode(text)
+            counts.append(len(tokens))
+        except Exception:
+            counts.append(0)
     return counts
 
-def dataset_label_counts(data: List[Any], label_key: str = 'label') -> Dict[Any, int]:
+
+def dataset_text_lengths(data: List[Any], text_field: str = "text") -> List[int]:
+    """
+    Computes text length (number of characters) per item.
+    """
+    lengths = []
+    for item in data:
+        if isinstance(item, dict) and text_field in item:
+            text = item[text_field]
+        else:
+            text = str(item)
+        lengths.append(len(text))
+    return lengths
+
+
+def dataset_label_counts(data: List[Any], label_field: str = "label") -> Dict[Any, int]:
     """
     Computes label distribution for quick stats.
     """
     counts = {}
     for item in data:
-        if isinstance(item, dict):
-            label = item.get(label_key, None)
-            if label is not None:
-                counts[label] = counts.get(label, 0) + 1
+        if isinstance(item, dict) and label_field in item:
+            label = item[label_field]
         elif isinstance(item, str):
-            # Accept direct string label
-            if item.strip() != '':
-                counts[item] = counts.get(item, 0) + 1
+            label = item
+        else:
+            label = None
+        if label is not None:
+            counts[label] = counts.get(label, 0) + 1
     return counts
 
 
@@ -284,3 +397,12 @@ def get_last_key(d: Any) -> Optional[str]:
     for k in d:
         last = k
     return last
+
+
+def get_keys(d: Any) -> List[str]:
+    """
+    Returns a list of keys from a dict, or empty list if not a dict.
+    """
+    if not isinstance(d, dict):
+        return []
+    return list(d.keys())
