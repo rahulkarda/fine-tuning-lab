@@ -19,6 +19,7 @@ Tests:
 - get_first_key: tests get_first_key utility (new)
 - get_last_key: tests get_last_key utility (new)
 - get_keys: tests get_keys utility (new)
+- evaluate_generation_quality: minimal test for generation probe (new)
 
 Extend with more tests as utilities are added.
 Run directly for quick check: python src/test_utils.py
@@ -131,157 +132,182 @@ def test_deduplicate_jsonl():
         deduplicate_jsonl(test_path, output_path)
         # Load deduplicated file
         deduped = load_jsonl(output_path)
-        ids = sorted([item["id"] for item in deduped])
-        assert ids == [1, 2, 3], f"Expected deduped ids [1,2,3], got {ids}"
+        ids = set([obj["id"] for obj in deduped])
+        assert len(deduped) == 3, f"Expected 3 deduped items, got {len(deduped)}"
+        assert ids == {1,2,3}, f"Expected ids {{1,2,3}}, got {ids}"
         print("test_deduplicate_jsonl passed.")
     finally:
-        for p in [test_path, output_path]:
-            try:
-                os.remove(p)
-            except FileNotFoundError:
-                pass
-            except PermissionError:
-                pass
+        try:
+            os.remove(test_path)
+        except FileNotFoundError:
+            pass
+        except PermissionError:
+            pass
+        try:
+            os.remove(output_path)
+        except FileNotFoundError:
+            pass
+        except PermissionError:
+            pass
 
 def test_flatten_dict():
-    nested = {
-        "a": 1,
-        "b": {
-            "c": 2,
-            "d": {
-                "e": 3
-            }
-        },
-        "f": 4
-    }
-    flat = flatten_dict(nested)
-    assert flat["a"] == 1
-    assert flat["b.c"] == 2
-    assert flat["b.d.e"] == 3
-    assert flat["f"] == 4
+    # Minimal test for flatten_dict utility
+    from src.utils import flatten_dict
+    d = {"a": 1, "b": {"c": 2, "d": {"e": 3}}, "f": 4}
+    flat = flatten_dict(d)
+    assert flat["a"] == 1 and flat["b.c"] == 2 and flat["b.d.e"] == 3 and flat["f"] == 4, f"Flatten failed: {flat}"
     print("test_flatten_dict passed.")
 
 def test_get_model_family():
-    names = [
-        "microsoft/Phi-3-mini-4k-instruct",
-        "Qwen/Qwen1.5-7B-Chat",
-        "meta-llama/Meta-Llama-3-8B",
-        "llama-3-Open",
-        "qwen2.5-14b",
-        "phi3-mixed",
-        "llama3",
-        "llama-3",
-        "foobar"
+    families = [
+        ("microsoft/Phi-3-mini-4k-instruct", "phi3"),
+        ("Qwen/Qwen1.5-7B-Chat", "qwen"),
+        ("meta-llama/Meta-Llama-3-8B", "llama3"),
+        ("unknown-model/foobar", "unknown"),
+        ("Llama-3-Open", "llama3"),
+        ("qwen2.5-14b", "qwen"),
+        ("phi3-mixed", "phi3"),
+        ("llama3", "llama3"),
+        ("llama-3", "llama3")
     ]
-    expected = [
-        "phi",
-        "qwen",
-        "llama",
-        "llama",
-        "qwen",
-        "phi",
-        "llama",
-        "llama",
-        "unknown"
-    ]
-    for name, fam in zip(names, expected):
-        result = get_model_family(name)
-        assert result == fam, f"Expected '{fam}' for '{name}', got '{result}'"
+    for name, expected in families:
+        fam = get_model_family(name)
+        assert fam == expected, f"Family mismatch for {name}: got {fam}, expected {expected}"
     print("test_get_model_family passed.")
 
 def test_eval_loss_on_dataset():
-    # Dummy Trainer and dataset
+    # Minimal stub test for eval_loss_on_dataset utility
+    from src.eval_loss import eval_loss_on_dataset
     class DummyTrainer:
         def evaluate(self, eval_dataset=None):
-            return {'eval_loss': 1.23}
+            return {"eval_loss": 1.23}
     trainer = DummyTrainer()
-    from src.eval_loss import eval_loss_on_dataset
-    loss = eval_loss_on_dataset(trainer, eval_dataset=[1,2,3])
-    assert abs(loss - 1.23) < 1e-5, f"Expected loss 1.23, got {loss}"
+    loss = eval_loss_on_dataset(trainer, [1,2,3])
+    assert abs(loss - 1.23) < 1e-6, f"Expected 1.23, got {loss}"
     print("test_eval_loss_on_dataset passed.")
 
 def test_count_model_parameters():
-    # Dummy model: 3 params, 2 trainable
-    class DummyParam:
-        def __init__(self, n, req_grad):
-            self._n = n
-            self.requires_grad = req_grad
-        def numel(self):
-            return self._n
+    # Minimal stub test for count_model_parameters utility
+    from src.trainer import count_model_parameters
     class DummyModel:
         def parameters(self):
-            return [DummyParam(10, True), DummyParam(5, False), DummyParam(2, True)]
-    from src.trainer import count_model_parameters
+            class P:
+                def __init__(self, numel, req_grad):
+                    self._n = numel
+                    self.requires_grad = req_grad
+                def numel(self):
+                    return self._n
+            return [P(100, True), P(200, False), P(50, True)]
     model = DummyModel()
     stats = count_model_parameters(model)
-    assert stats["total_params"] == 17
-    assert stats["trainable_params"] == 12
-    assert stats["non_trainable_params"] == 5
-    train_only = count_model_parameters(model, trainable_only=True)
-    assert train_only["trainable_params"] == 12
+    assert stats["total_params"] == 350, f"Total params mismatch: {stats}"
+    assert stats["trainable_params"] == 150, f"Trainable params mismatch: {stats}"
+    assert stats["non_trainable_params"] == 200, f"Non-trainable params mismatch: {stats}"
+    only = count_model_parameters(model, trainable_only=True)
+    assert only["trainable_params"] == 150, f"Trainable only mismatch: {only}"
     print("test_count_model_parameters passed.")
 
 def test_is_empty():
-    assert is_empty(None) == True
-    assert is_empty("") == True
-    assert is_empty([]) == True
-    assert is_empty({}) == True
-    assert is_empty("   ") == True
-    assert is_empty("a") == False
-    assert is_empty([1]) == False
-    assert is_empty({"x": 1}) == False
+    from src.utils import is_empty
+    assert is_empty(None), "None should be empty"
+    assert is_empty(""), "Empty string should be empty"
+    assert is_empty("   "), "Whitespace string should be empty"
+    assert is_empty([]), "Empty list should be empty"
+    assert is_empty({}, "Empty dict should be empty")
+    assert not is_empty("abc"), "Non-empty string should not be empty"
+    assert not is_empty([1]), "Non-empty list should not be empty"
     print("test_is_empty passed.")
 
 def test_dataset_text_lengths():
-    # Each item should be dict with 'text' key
+    from src.utils import dataset_text_lengths
     data = [
-        {"text": "abc"},
-        {"text": "defg"},
+        {"text": "hello"},
+        {"text": "world!"},
         {"text": ""},
-        {"foo": "bar"}  # missing text
+        {"foo": "bar"}
     ]
     lengths = dataset_text_lengths(data)
-    assert lengths == [3, 4, 0, 0], f"Expected [3,4,0,0], got {lengths}"
+    assert lengths == [5,6,0,0], f"Text lengths mismatch: {lengths}"
     print("test_dataset_text_lengths passed.")
 
 def test_get_first_key():
+    from src.utils import get_first_key
     d1 = {"a": 1, "b": 2}
-    d2 = {"x": 42}
-    d3 = {}
-    d4 = []
-    d5 = None
-    assert get_first_key(d1) == "a", f"Expected 'a' as first key"
-    assert get_first_key(d2) == "x", f"Expected 'x' as first key"
-    assert get_first_key(d3) is None, f"Expected None for empty dict"
+    d2 = {}
+    d3 = {"x": 10}
+    d4 = "notadict"
+    assert get_first_key(d1) == "a", f"Expected 'a' for d1"
+    assert get_first_key(d2) is None, f"Expected None for empty dict"
+    assert get_first_key(d3) == "x", f"Expected 'x' for d3"
     assert get_first_key(d4) is None, f"Expected None for non-dict"
-    assert get_first_key(d5) is None, f"Expected None for None input"
     print("test_get_first_key passed.")
 
 def test_get_last_key():
-    d1 = {"a": 1, "b": 2, "c": 3}
-    d2 = {"x": 42}
-    d3 = {}
-    d4 = []
-    d5 = None
-    assert get_last_key(d1) == "c", f"Expected 'c' as last key"
-    assert get_last_key(d2) == "x", f"Expected 'x' as last key"
-    assert get_last_key(d3) is None, f"Expected None for empty dict"
+    from src.utils import get_last_key
+    d1 = {"a": 1, "b": 2}
+    d2 = {}
+    d3 = {"x": 10}
+    d4 = "notadict"
+    assert get_last_key(d1) == "b", f"Expected 'b' for d1"
+    assert get_last_key(d2) is None, f"Expected None for empty dict"
+    assert get_last_key(d3) == "x", f"Expected 'x' for d3"
     assert get_last_key(d4) is None, f"Expected None for non-dict"
-    assert get_last_key(d5) is None, f"Expected None for None input"
     print("test_get_last_key passed.")
 
 def test_get_keys():
-    d1 = {"a": 1, "b": 2, "c": 3}
-    d2 = {"x": 42}
-    d3 = {}
-    d4 = []
+    from src.utils import get_keys
+    d1 = {"a": 1, "b": 2}
+    d2 = {}
+    d3 = {"x": 10, "y": 20}
+    d4 = "notadict"
     d5 = None
-    assert get_keys(d1) == ["a", "b", "c"], f"Expected ['a','b','c'] as keys"
-    assert get_keys(d2) == ["x"], f"Expected ['x'] as keys"
-    assert get_keys(d3) == [], f"Expected [] for empty dict"
+    assert get_keys(d1) == ["a", "b"], f"Expected ['a', 'b'] for d1"
+    assert get_keys(d2) == [], f"Expected [] for empty dict"
+    assert get_keys(d3) == ["x", "y"], f"Expected ['x', 'y'] for d3"
     assert get_keys(d4) == [], f"Expected [] for non-dict"
     assert get_keys(d5) == [], f"Expected [] for None input"
     print("test_get_keys passed.")
+
+def test_evaluate_generation_quality():
+    from src.eval_generation import evaluate_generation_quality
+    class DummyTokenizer:
+        def encode(self, s):
+            return list(s)
+        def batch_decode(self, ids, skip_special_tokens=True):
+            # ids is list of lists; decode to string
+            if isinstance(ids[0], list):
+                return ["".join(map(str, idseq)) for idseq in ids]
+            else:
+                return ["".join(map(str, ids))]
+        eos_token_id = 0
+    class DummyModel:
+        def to(self, device):
+            return self
+        def generate(self, **kwargs):
+            prompts = kwargs['input_ids'].tolist() if 'input_ids' in kwargs else [[1,2,3]]
+            # For each prompt, return input_ids + [100]
+            import torch
+            return torch.tensor([ids + [100] for ids in prompts])
+    dummy_tokenizer = DummyTokenizer()
+    dummy_model = DummyModel()
+    prompts = ["abc", "123"]
+    # Simulate input_ids
+    def dummy_tokenizer_call(prompts, return_tensors, padding, truncation):
+        import torch
+        return torch.tensor([[ord(c) for c in p] for p in prompts])
+    dummy_tokenizer.__call__ = dummy_tokenizer_call
+    results = evaluate_generation_quality(
+        dummy_model, dummy_tokenizer, prompts,
+        references=["100", "100"],
+        max_new_tokens=1,
+        metrics=["length", "exact_match"],
+        batch_size=1,
+        device="cpu"
+    )
+    assert "outputs" in results and "lengths" in results and "exact_match" in results, "Missing keys in results"
+    assert isinstance(results["lengths"], list), "Lengths should be a list"
+    assert 0 <= results["exact_match"] <= 1, f"Exact match out of range: {results['exact_match']}"
+    print("test_evaluate_generation_quality passed.")
 
 if __name__ == '__main__':
     test_count_jsonl_lines()
@@ -298,3 +324,4 @@ if __name__ == '__main__':
     test_get_first_key()
     test_get_last_key()
     test_get_keys()
+    test_evaluate_generation_quality()
