@@ -8,7 +8,8 @@ def generate_outputs(
     prompts: List[str],
     max_new_tokens: int = 128,
     temperature: float = 0.7,
-    top_p: float = 0.95,
+    top_p: float = 0.98,  # increased from 0.95 for more diversity
+    min_length: int = 0,  # new param for minimal generation length
     batch_size: int = 4,
     device: Optional[str] = "cuda"
 ) -> List[str]:
@@ -21,6 +22,7 @@ def generate_outputs(
         max_new_tokens: maximum tokens to generate per prompt
         temperature: sampling temperature
         top_p: nucleus sampling probability
+        min_length: minimal length for output sequence (new)
         batch_size: number of prompts per generation batch
         device: device string ("cuda" or "cpu")
     Returns:
@@ -38,6 +40,7 @@ def generate_outputs(
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
                 top_p=top_p,
+                min_length=inputs.input_ids.shape[1] + min_length if min_length > 0 else None,
                 do_sample=True,
                 pad_token_id=tokenizer.eos_token_id,
             )
@@ -59,7 +62,9 @@ def evaluate_generation_quality(
     max_new_tokens: int = 128,
     metrics: Optional[List[str]] = None,
     batch_size: int = 4,
-    device: Optional[str] = "cuda"
+    device: Optional[str] = "cuda",
+    top_p: float = 0.98,
+    min_length: int = 0
 ) -> Dict[str, Any]:
     """
     Runs a generation quality probe on fixed prompts and computes metrics.
@@ -72,6 +77,8 @@ def evaluate_generation_quality(
         metrics: list of metrics to compute ("length", "exact_match")
         batch_size: batch size
         device: device string
+        top_p: nucleus sampling probability (new, default 0.98)
+        min_length: minimal length for output sequence (new)
     Returns:
         Dict with generated outputs and metrics
     """
@@ -79,7 +86,9 @@ def evaluate_generation_quality(
         model, tokenizer, prompts,
         max_new_tokens=max_new_tokens,
         batch_size=batch_size,
-        device=device
+        device=device,
+        top_p=top_p,
+        min_length=min_length
     )
     results = {
         "outputs": outputs
