@@ -57,6 +57,9 @@ except ImportError:
 import torch
 
 def create_lora_config(cfg: TrainConfig):
+    """
+    Constructs a LoraConfig from TrainConfig.
+    """
     return LoraConfig(
         r=cfg.lora_r,
         lora_alpha=cfg.lora_alpha,
@@ -95,9 +98,10 @@ def setup_model_and_tokenizer(cfg: TrainConfig):
     return model, tokenizer
 
 
-def get_training_args(cfg: TrainConfig):
+def get_training_args(cfg: TrainConfig) -> TrainingArguments:
     """
     Builds TrainingArguments from config.
+    Separates construction for clarity.
     """
     return TrainingArguments(
         output_dir=cfg.output_dir,
@@ -107,7 +111,7 @@ def get_training_args(cfg: TrainConfig):
         learning_rate=cfg.learning_rate,
         max_steps=-1,
         seed=cfg.seed,
-        logging_steps=20,  # was 10
+        logging_steps=20,
         save_strategy="epoch",
         evaluation_strategy="no",
         warmup_ratio=cfg.warmup_ratio,
@@ -116,7 +120,7 @@ def get_training_args(cfg: TrainConfig):
         report_to=[],
         resume_from_checkpoint=cfg.resume_from if cfg.resume_from else None,
         gradient_checkpointing=cfg.gradient_checkpointing,
-        save_total_limit=2,  # limit to 2 checkpoints to reduce clutter
+        save_total_limit=2,
     )
 
 
@@ -131,46 +135,30 @@ class MinimalTrainer:
     Usage:
         trainer = MinimalTrainer(cfg, train_dataset, tokenizer)
         trainer.train()
-
-    Extend for custom callbacks or logging.
     """
     def __init__(self, cfg: TrainConfig, train_dataset, tokenizer):
         self.cfg = cfg
-        self.model, self.tokenizer = setup_model_and_tokenizer(cfg)
+        self.tokenizer = tokenizer
+        self.model, _ = setup_model_and_tokenizer(cfg)
         self.train_dataset = train_dataset
-        self.args = get_training_args(cfg)
+        self.training_args = get_training_args(cfg)
         self.trainer = Trainer(
             model=self.model,
-            args=self.args,
+            args=self.training_args,
             train_dataset=self.train_dataset,
             tokenizer=self.tokenizer
         )
 
     def train(self):
-        return self.trainer.train()
-
-    def save_model(self):
-        self.trainer.save_model()
-
-    def model_stats(self, trainable_only: bool = False):
         """
-        Returns parameter statistics for the model.
-        Args:
-            trainable_only: if True, returns only trainable param count.
-        Returns:
-            dict with counts
+        Runs the training loop.
         """
-        return count_model_parameters(self.model, trainable_only=trainable_only)
+        self.trainer.train()
 
 
-def count_model_parameters(model, trainable_only: bool = False):
+def count_model_parameters(model, trainable_only: bool = False) -> dict:
     """
-    Returns parameter statistics for a model.
-    Args:
-        model: torch.nn.Module
-        trainable_only: if True, only include trainable params
-    Returns:
-        dict with total_params, trainable_params, non_trainable_params
+    Returns dict with total_params, trainable_params, non_trainable_params
     """
     total = 0
     trainable = 0
