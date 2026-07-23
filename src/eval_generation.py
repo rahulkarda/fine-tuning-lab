@@ -29,11 +29,13 @@ def generate_outputs(
         List of generated strings (responses)
     """
     import torch
-    model = model.to(device)
+    # Fix: handle device=None gracefully (fall back to CPU)
+    resolved_device = device if device is not None else "cpu"
+    model = model.to(resolved_device)
     outputs = []
     for i in range(0, len(prompts), batch_size):
         batch_prompts = prompts[i:i+batch_size]
-        inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True, truncation=True).to(device)
+        inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True, truncation=True).to(resolved_device)
         with torch.no_grad():
             gen_ids = model.generate(
                 **inputs,
