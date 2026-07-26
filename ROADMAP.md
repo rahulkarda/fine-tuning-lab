@@ -22,7 +22,7 @@
 - [x] Phi-3-mini on instruction data (started)
 - [x] Qwen-2.5 on a coding-style dataset (started)
 - [x] LoRA rank sweep on one fixed dataset
-- [ ] Learning rate finder
+- [x] Learning rate finder
 
 ## Phase 5: polish
 - [ ] CLI entrypoint
