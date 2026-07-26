@@ -25,6 +25,6 @@
 - [x] Learning rate finder
 
 ## Phase 5: polish
-- [ ] CLI entrypoint
+- [x] CLI entrypoint
 - [x] Unit tests for data utilities
 - [ ] Notebook walkthrough
