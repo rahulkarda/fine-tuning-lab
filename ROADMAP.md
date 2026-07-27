@@ -27,4 +27,4 @@
 ## Phase 5: polish
 - [x] CLI entrypoint
 - [x] Unit tests for data utilities
-- [ ] Notebook walkthrough
+- [x] Notebook walkthrough
