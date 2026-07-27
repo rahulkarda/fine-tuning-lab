@@ -3,16 +3,17 @@ Minimal HuggingFace Trainer wrapper for LoRA and full-parameter fine-tuning.
 
 This module provides:
 - Model and tokenizer loading (AutoModelForCausalLM, AutoTokenizer) for common open models
-- Optional LoRA configuration via peft (parameter-efficient tuning)
+- Optional LoRA configuration via peft (parameter-efficient tuning; requires peft package)
 - TrainingArguments setup: batch size, epochs, learning rate, gradient accumulation, checkpointing, etc.
 - MinimalTrainer class: wraps HF Trainer and exposes .train() for easy experiment runs
 - Support for resuming from checkpoint and memory-efficient training
 - Utility: count_model_parameters(model, trainable_only=False) for parameter statistics (new)
 
-LoRA integration:
+LoRA integration (clarified):
 - If cfg.use_lora is True, model is wrapped with LoRA using peft (must be installed).
 - lora_r, lora_alpha, lora_dropout, lora_target_modules are all configurable from TrainConfig.
 - For new model families, check target_modules carefully (often 'q_proj', 'v_proj' for attention).
+- If peft is not installed, ImportError will be raised (explicit check).
 
 Config tips:
 - All training hyperparameters are controlled via TrainConfig dataclass (src/config.py).
@@ -34,7 +35,7 @@ MinimalTrainer handles model setup, Trainer instantiation, and training loop.
 Extend this module for custom callbacks, evaluation, or logging as needed.
 
 Caveats:
-- LoRA requires peft; install with pip if missing.
+- LoRA requires peft; install with pip if missing (pip install peft).
 - Resume-from-checkpoint expects compatible checkpoint in cfg.output_dir.
 - Memory settings (fp16, gradient_checkpointing) may need adjustment per model/GPU.
 - count_model_parameters is useful for reporting trainable parameter count (especially with LoRA).
@@ -133,32 +134,9 @@ class MinimalTrainer:
         train_dataset: tokenized dataset for training
         tokenizer: tokenizer instance
     Usage:
-        trainer = MinimalTrainer(cfg, train_dataset, tokenizer)
-        trainer.train()
-    """
-    def __init__(self, cfg: TrainConfig, train_dataset, tokenizer):
-        self.cfg = cfg
-        self.tokenizer = tokenizer
-        self.model, _ = setup_model_and_tokenizer(cfg)
-        self.train_dataset = train_dataset
-        self.training_args = get_training_args(cfg)
-        self.trainer = Trainer(
-            model=self.model,
-            args=self.training_args,
-            train_dataset=self.train_dataset,
-            tokenizer=self.tokenizer
-        )
-
-    def train(self):
-        """
-        Runs the training loop.
-        """
-        self.trainer.train()
-
-
-def count_model_parameters(model, trainable_only: bool = False) -> dict:
-    """
-    Returns dict with total_params, trainable_params, non_trainable_params
+        trainer = M
+... [truncated]
+th total_params, trainable_params, non_trainable_params
     """
     total = 0
     trainable = 0
