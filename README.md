@@ -18,3 +18,26 @@ Scaffolding. See [ROADMAP.md](ROADMAP.md).
 ```bash
 pip install -r requirements.txt
 ```
+
+## CLI Usage
+
+Run experiments and dataset stats from the command line:
+
+```bash
+python -m src.cli train --config configs/my_experiment.yaml
+```
+- Loads experiment config YAML (see example in configs/)
+- Prints config and (currently) stub for training
+- Add `--dry` to print config and exit without running training
+
+Print quick dataset stats:
+
+```bash
+python -m src.cli stats --config configs/my_experiment.yaml
+```
+- Loads dataset from path specified in config
+- Prints token length distribution, label balance, and other stats
+
+## Example configs
+
+See `configs/` for sample experiment YAMLs. Edit for your own datasets/models.
