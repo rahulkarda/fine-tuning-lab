@@ -62,7 +62,11 @@ def main():
         data = load_jsonl(cfg.dataset_path)
         stats = dataset_stats(data)
         print("Dataset stats:")
-        print(stats)
+        if isinstance(stats, dict):
+            import pprint
+            pprint.pprint(stats)
+        else:
+            print(stats)
     else:
         parser.print_help()
 
