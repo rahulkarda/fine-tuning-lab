@@ -15,8 +15,8 @@ class TrainConfig:
     max_seq_length: int = 4096  # increased default for longer context
     seed: int = 42
     use_lora: bool = True
-    lora_r: int = 32  # increased rank for more adaptation capacity
-    lora_alpha: int = 64  # increased alpha for more adaptation capacity
+    lora_r: int = 64  # increased rank for more adaptation capacity (was 32)
+    lora_alpha: int = 64  # increased alpha for more adaptation capacity (was 32)
     lora_dropout: float = 0.1  # reduced dropout for stability
     lora_target_modules: tuple = ("q_proj", "v_proj")
     warmup_ratio: float = 0.02  # reduced warmup ratio for faster convergence
