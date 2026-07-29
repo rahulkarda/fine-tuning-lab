@@ -1,4 +1,35 @@
-"""Training run config. Loaded from YAML in real runs."""
+"""
+Training run config. Loaded from YAML in real runs.
+
+Fields:
+- base_model: HuggingFace model name or path (e.g. 'microsoft/Phi-3-mini-4k-instruct')
+- dataset_path: Path to training data (JSONL, or other supported format)
+- output_dir: Directory to save checkpoints and logs
+- epochs: Number of training epochs
+- learning_rate: Initial learning rate for optimizer
+- batch_size: Per-device batch size
+- grad_accum_steps: Steps to accumulate gradients before optimizer update
+- max_seq_length: Maximum sequence length for tokenization/model
+- seed: Random seed for reproducibility
+- use_lora: Whether to enable LoRA parameter-efficient tuning
+- lora_r: LoRA rank (adaptation capacity)
+- lora_alpha: LoRA scaling factor
+- lora_dropout: Dropout probability for LoRA layers
+- lora_target_modules: Tuple of module names to apply LoRA (e.g. ('q_proj', 'v_proj'))
+- warmup_ratio: Fraction of total steps for learning rate warmup
+- weight_decay: Weight decay regularization
+- resume_from: Optional checkpoint path to resume training
+- gradient_checkpointing: Toggle for memory-efficient gradient checkpointing
+
+Typical usage:
+    from src.config import TrainConfig
+    cfg = TrainConfig()
+    # Override fields as needed
+    cfg.base_model = 'Qwen/Qwen1.5-0.5B'
+    cfg.dataset_path = 'data/qwen.jsonl'
+    # Pass cfg to trainer or CLI
+
+"""
 from dataclasses import dataclass, field
 from typing import Optional
 
