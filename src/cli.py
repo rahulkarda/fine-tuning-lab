@@ -44,7 +44,11 @@ def main():
     if args.command == "train":
         cfg = load_train_config_from_yaml(args.config)
         print("Loaded config:")
-        print(cfg)
+        try:
+            import yaml
+            print(yaml.dump(cfg.__dict__, sort_keys=False, default_flow_style=False))
+        except ImportError:
+            print(cfg)
         if args.dry:
             sys.exit(0)
         print("Training run stub (actual training not implemented in CLI yet).")
