@@ -39,8 +39,8 @@ class TrainConfig:
     base_model: str = "microsoft/Phi-3-mini-4k-instruct"
     dataset_path: str = "data/train.jsonl"
     output_dir: str = "outputs/run"
-    epochs: int = 3  # reduced default epochs for quicker runs
-    learning_rate: float = 1e-4  # reduced learning rate for more stability
+    epochs: int = 2  # reduced default epochs for faster runs
+    learning_rate: float = 5e-5  # reduced learning rate for quick adaptation
     batch_size: int = 8  # increased batch size for stability on Phi-3-mini
     grad_accum_steps: int = 2  # reduced grad accum steps for more frequent optimizer updates
     max_seq_length: int = 4096  # increased default for longer context
